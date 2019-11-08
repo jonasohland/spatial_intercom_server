@@ -1,5 +1,8 @@
 const net = require('net');
 const fs = require('fs');
+const logger = require('../src/log');
+
+const log = logger.get("PIP");
 
 function pipename(name) {
     if (process.platform == "win32")
@@ -16,5 +19,9 @@ function pipename(name) {
 }
 
 module.exports.make = function (name, callback) {
-    return server = net.createServer(callback).listen(pipename(name));
+    let server = net.createServer(callback).listen(pipename(name));
+
+    log.info("Created Pipe on " + pipename(name));
+
+    return server;
 }

@@ -4,11 +4,17 @@
   "description": "spatial intercom server application",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "server": "npm run build && node ./dist/index.js"
   },
   "author": "Jonas Ohland",
   "license": "ISC",
   "dependencies": {
-    "@types/node": "^12.12.5"
+    "@types/lodash": "^4.14.145",
+    "@types/node": "^12.12.5",
+    "chalk": "^2.4.2",
+    "typescript": "^3.7.2",
+    "winston": "^3.2.1"
   }
 }

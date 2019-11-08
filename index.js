@@ -1,28 +1,21 @@
-const net = require('net');
-const pipe = require('./platform/pipe');
+const IPC = require('./src/ipc')
 
-let counter = 0;
-let sender = null;
+const con = new IPC.Connection("test");
 
-const connection = pipe.make("test");
+con.on('connection', s => {
 
-connection.on('connection', socket => {
+    let msg = new IPC.Message("devmgmt", "device_input", IPC.MessageMode.SET);
 
-    console.log("connected");
+    msg.setString("ASIO MADIface USB");
 
-    sender = setInterval(() => {
-        ++counter;
-        socket.write(JSON.stringify({ n: "test", d: "nothing " + counter, m: 0 }) + '\0');
-    }, 1);
-
-    socket.on('close', (err) => {
-
-        if (sender)
-            clearInterval(sender);
-
-        if (err)
-            console.log("closed with error");
-        else
-            console.log("closed");
-    })
+    con.send(msg);
 });
+
+con.on('devmgmt', data => {
+
+    console.log(data.d);
+
+    con.send(new IPC.Message("app", "ctrl", IPC.MessageMode.SET).setString("stop"));
+});
+
+con.begin();
