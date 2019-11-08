@@ -6,10 +6,11 @@
   "scripts": {
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "server": "npm run build && node ./dist/index.js"
+    "start": "npm run build && node ./dist/index.js"
   },
   "author": "Jonas Ohland",
   "license": "ISC",
+  "repository": "https://github.com/jonasohland/spatial_intercom_server",
   "dependencies": {
     "@types/lodash": "^4.14.145",
     "@types/node": "^12.12.5",
