@@ -8,14 +8,37 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "npm run build && node ./dist/index.js"
   },
+  "bin": {
+    "si-server": "bin/cli.js"
+  },
   "author": "Jonas Ohland",
   "license": "ISC",
   "repository": "https://github.com/jonasohland/spatial_intercom_server",
   "dependencies": {
-    "@types/lodash": "^4.14.145",
-    "@types/node": "^12.12.5",
+    "@types/bonjour": "^3.5.5",
+    "@types/dnssd": "^0.4.1",
+    "@types/ini": "^1.3.30",
+    "@types/lodash": "^4.14.149",
+    "@types/node": "^12.12.20",
+    "@types/socket.io": "^2.1.4",
     "chalk": "^2.4.2",
-    "typescript": "^3.7.2",
+    "commander": "^4.0.1",
+    "dnssd": "^0.4.1",
+    "ini": "^1.3.5",
+    "is-ip": "^3.1.0",
+    "osc-js": "^2.1.0",
+    "socket.io": "^2.3.0",
+    "typescript": "^3.7.3",
     "winston": "^3.2.1"
+  },
+  "prettier": {
+    "trailingComma": "es5",
+    "tabWidth": 4,
+    "semi": true,
+    "singleQuote": true,
+    "bracketSpacing": true,
+    "jsxBracketSameLine": false,
+    "arrowParens": "avoid",
+    "endOfLine": "auto"
   }
 }
