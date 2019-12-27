@@ -159,12 +159,23 @@ export class HeadtrackerDataPacket {
     }
 }
 
+interface HeadtrackerSettings {
+
+    id: number
+
+    dhcp: boolean;
+
+    local_ip: string;
+    local_subnet: string;
+    local_gateway: string;
+}
+
 export class HeadtrackerConfigPacket {
 
     device_config: number  = 0;
     network_config: number = 0;
     device_state: number   = 0;
-    sample_freq: number    = 0;
+    sample_rate: number    = 0;
 
     stream_dest_addr: string = '0.0.0.0';
     stream_dest_port: number = 0;
@@ -252,7 +263,7 @@ export class HeadtrackerConfigPacket {
         b.writeUInt8(this.device_config, 4);
         b.writeUInt8(this.network_config, 5);
         b.writeUInt8(this.device_state, 6);
-        b.writeUInt8(this.sample_freq, 7);
+        b.writeUInt8(this.sample_rate, 7);
 
         b.writeUInt32LE(stringToAddr(this.stream_dest_addr), 8);
         b.writeUInt16LE(this.stream_dest_port, 12);
@@ -279,7 +290,7 @@ export class HeadtrackerConfigPacket {
         packet.device_config    = buf.readUInt8(4);
         packet.network_config   = buf.readUInt8(5);
         packet.device_state     = buf.readUInt8(6);
-        packet.sample_freq      = buf.readUInt8(7);
+        packet.sample_rate      = buf.readUInt8(7);
         packet.stream_dest_addr = addrToString(buf.readUInt32LE(8));
         packet.stream_dest_port = buf.readUInt16LE(12);
         packet.sequence_num     = buf.readUInt16LE(14);
@@ -307,6 +318,35 @@ enum HTRKMsgState {
     WAITING,
     SAVING,
     READY,
+}
+
+class HeadtrackerUpdateCallback {
+
+    constructor(seq: number, cb: (id: number) => void)
+    {
+        this.seq      = seq;
+        this.callback = cb;
+    }
+
+    seq: number;
+    callback: (t_id: number) => void;
+}
+
+class HeadtrackerCallbackQueue {
+
+    queue: HeadtrackerUpdateCallback[];
+
+    call(seq: number, id: number)
+    {
+        let i = this.queue.findIndex(el => el.seq == seq);
+
+        if (i != -1) this.queue.splice(i, 1)[0].callback(id);
+    }
+
+    add(cb: HeadtrackerUpdateCallback)
+    {
+        this.queue.push(cb);
+    }
 }
 
 /**
@@ -610,13 +650,47 @@ export class Headtracker extends EventEmitter {
 
     setSamplerate(rate: number)
     {
-        this.local.conf.sample_freq = rate;
+        this.local.conf.sample_rate = rate;
+        this._updateDevice();
+    }
+
+    setStreamDest(ip: string, port: number)
+    {
+        this.local.conf.stream_dest_addr = ip;
+        this.local.conf.stream_dest_port = port;
+        this._updateDevice();
+    }
+
+    applySettings(settings: HeadtrackerSettings)
+    {
+        if (settings.id) this.local.conf.setDeviceID(settings.id);
+
+        if (settings.local_ip)
+            this.local.conf.device_static_ip = settings.local_ip;
+
+        if (settings.local_subnet)
+            this.local.conf.device_static_subnet = settings.local_subnet;
+
+        if (settings.dhcp != undefined) {
+
+            if (settings.dhcp)
+                this.local.conf.setNetworkFlag(HeadtrackerNetworkFlags.DHCP);
+            else
+                this.local.conf.clearNetworkFlag(HeadtrackerNetworkFlags.DHCP);
+        }
+
         this._updateDevice();
     }
 
     save()
     {
         this.local.conf.setDeviceFlag(HeadtrackerConfigFlags.UPDATE);
+        this._updateDevice();
+    }
+
+    reboot()
+    {
+        this.local.conf.setDeviceFlag(HeadtrackerConfigFlags.REBOOT);
         this._updateDevice();
     }
 
@@ -689,6 +763,19 @@ export class Headtracking extends EventEmitter {
                 else
                     self.getHeadtracker(id).disableTx();
             });
+
+            socket.on('htrk.reboot', (id: number) => {
+                self.getHeadtracker(id).reboot();
+            });
+
+            socket.on('htrk.save', (id: number) => {
+                self.getHeadtracker(id).save();
+            });
+
+            socket.on('htrk.settings.updated',
+                      (id: number, settings: HeadtrackerSettings) => {
+
+                      });
         });
     }
 
@@ -704,9 +791,6 @@ export class Headtracking extends EventEmitter {
                                    11023,
                                    4009,
                                    this.local_interface);
-
-        let self = this;
-
         htrk.start();
 
         htrk.on('update', this.updateRemote.bind(this));
@@ -717,8 +801,6 @@ export class Headtracking extends EventEmitter {
     }
 
     serviceRemoved(service: dnssd.Service) {}
-
-    trackerChanged(tracker_id: number) {}
 
     getHeadtracker(id: number)
     {
@@ -731,17 +813,15 @@ export class Headtracking extends EventEmitter {
         let tracker_update = this.trackers.map((tracker: Headtracker) => {
             return {
                 data: {
-                    address: tracker.remote.addr,
-                    gyro_online: tracker.remote.conf.isStateFlagSet(
-                        HeadtrackerStateFlags.GY_PRESENT),
-                    gyro_ready: tracker.remote.conf.isStateFlagSet(
-                        HeadtrackerStateFlags.GY_RDY),
-                    online: tracker._state(HTRKDevState.CONNECTED)
-                              || tracker._state(HTRKDevState.BUSY),
-                    samplerate: tracker.remote.conf.sample_freq,
-                    stream_on: tracker.remote.conf.isDeviceFlagSet(
-                        HeadtrackerConfigFlags.STREAM_ENABLED),
-                    id: tracker.remote.conf.deviceID()
+                    // clang-format off
+                    address:        tracker.remote.addr,
+                    gyro_online:    tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_PRESENT),
+                    gyro_ready:     tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_RDY),
+                    online:         tracker._state(HTRKDevState.CONNECTED) || tracker._state(HTRKDevState.BUSY),
+                    samplerate:     tracker.remote.conf.sample_rate,
+                    stream_on:      tracker.remote.conf.isDeviceFlagSet(HeadtrackerConfigFlags.STREAM_ENABLED),
+                    id:             tracker.remote.conf.deviceID()
+                    // clang-format on
                 }
             }
 

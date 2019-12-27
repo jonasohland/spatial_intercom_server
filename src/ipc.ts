@@ -2,8 +2,11 @@ import EventEmitter from 'events';
 import Net from 'net';
 import fs from 'fs'
 import _ from 'lodash'
+import split from 'split2'
+
 import * as Logger from './log'
 import { Socket } from 'dgram';
+import { Stream } from 'stream';
 
 const log = Logger.get("PIP");
 
@@ -152,6 +155,8 @@ export class Connection extends EventEmitter {
     socket: Net.Socket;
     name: string;
 
+    old_data: Buffer;
+
     constructor(name: string) {
         super();
 
@@ -167,8 +172,8 @@ export class Connection extends EventEmitter {
         
             log.info("New Client connected");
 
-            sock.on('data', (data: any) => {
-                this.decodeMessage(data)
+            sock.pipe(split('\0')).on("data", data => {
+                self.decodeMessage(data);
             });
 
             sock.on('close', (err: Error) => {
@@ -206,7 +211,7 @@ export class Connection extends EventEmitter {
         this.emit(msg.target, msg);
     }
 
-    async request(tg: string, fld: string, data?: string) : Promise<Message> {
+    async request(tg: string, fld: string, timeout: number, data?: string) : Promise<Message> {
 
         let self = this
 
@@ -218,7 +223,7 @@ export class Connection extends EventEmitter {
 
                 reject("timeout");
 
-            }, 1000);
+            }, timeout || 1000);
 
             let response_listener = (msg: Message) => {
 

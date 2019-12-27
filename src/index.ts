@@ -2,15 +2,14 @@ import 'commander'
 
 import commander from 'commander'
 import dnssd from 'dnssd'
-import * as fs from 'fs';
 import * as http from 'http'
-import * as ini from 'ini'
-import * as os from 'os';
 import io from 'socket.io'
+import * as ipc from './ipc'
 
 import * as config from './config'
 import {Headtracking} from './headtracker'
 import * as Logger from './log'
+import { copyFileSync } from 'fs'
 
 const log = Logger.get('SRV');
 
@@ -27,6 +26,8 @@ let si_server_config = config.merge(program);
 const si_server = http.createServer();
 const server    = io(si_server);
 
+Logger.rct.attach(server);
+
 const ad
     = new dnssd.Advertisement(dnssd.tcp('http'), 8080, { name : 'si_server' })
           .start();
@@ -37,15 +38,30 @@ server.on('connection',
 
 
 log.info('Searching for headtracking devices'
-        + ((si_server_config.htrk_interface != undefined)
+         + ((si_server_config.htrk_interface != undefined)
                 ? ' on interface ' + si_server_config.htrk_interface
                 : ''));
 
-const hdtrck
-    = new Headtracking(4009, server, si_server_config.htrk_interface);
+const hdtrck = new Headtracking(4009, server, si_server_config.htrk_interface);
 
 
 si_server.listen(10156,
-    (si_server_config.web_interface)
-        ? si_server_config.web_interface
-        : '0.0.0.0');
+                 (si_server_config.web_interface)
+                     ? si_server_config.web_interface
+                     : '0.0.0.0');
+
+const con = new ipc.Connection("default");
+
+con.on("connection", () => {
+    con.request("devmgmt", "vst_list")
+        .then(msg => { 
+            console.log(msg.data);
+            return con.request("app", "stop");
+        })
+        .then(msg => {
+            log.info("stopped");
+        })
+        .catch(reason => { log.error(reason); })
+})
+
+con.begin();
