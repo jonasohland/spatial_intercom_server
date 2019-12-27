@@ -53,9 +53,11 @@ si_server.listen(10156,
 const con = new ipc.Connection("default");
 
 con.on("connection", () => {
-    con.request("devmgmt", "vst_list")
+    con.request("devmgmt", "vst_scan")
         .then(msg => { 
-            console.log(msg.data);
+            return con.request("devmgmt", "vst_list");
+        })
+        .then(msg => {
             return con.request("app", "stop");
         })
         .then(msg => {

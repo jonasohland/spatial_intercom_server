@@ -211,7 +211,7 @@ export class Connection extends EventEmitter {
         this.emit(msg.target, msg);
     }
 
-    async request(tg: string, fld: string, timeout: number, data?: string) : Promise<Message> {
+    async request(tg: string, fld: string, timeout?: number, data?: string) : Promise<Message> {
 
         let self = this
 
