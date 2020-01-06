@@ -28,6 +28,10 @@ function getInterface(option: string, interfaces: any)
         log.error('Could not find network interface ' + option);
 }
 
+function parseWebserverOptions() {
+    
+}
+
 export function merge(cmd_opts: commander.Command)
 {
     let output: { htrk_interface?: string, web_interface?: string } = {};

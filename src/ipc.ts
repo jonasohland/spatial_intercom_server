@@ -16,7 +16,7 @@ function isNull(v: any){
 
 
 export enum MessageMode {
-    GET = 0, SET, DEL, ALC, RSP
+    GET = 0, SET, DEL, ALC, RSP, EVT
 }
 
 function _pipename(name: string): string {
@@ -42,14 +42,14 @@ function _make_pipe(name: string, callback: (sock: Net.Socket) => void) {
 
 function _log_msg(msg: Message, input: boolean){
 
-    let to_from = input? "_TO_":"FROM";
+    let to_from = input? " TO ":"FROM";
 
     let ty = MessageMode[msg.mode];
 
     if(_.isObjectLike(msg.data))
-        log.info(`Msg ${to_from} DSP: [${msg.target} -> ${msg.field}] [${ty}] -> [data truncated]`);
+        log.verbose(`Msg ${to_from} DSP: [${msg.target} -> ${msg.field}] [${ty}] -> [data truncated]`);
     else
-        log.info(`Msg ${to_from} DSP: [${msg.target} -> ${msg.field}] [${ty}] -> ${msg.data}`);
+        log.verbose(`Msg ${to_from} DSP: [${msg.target} -> ${msg.field}] [${ty}] -> ${msg.data}`);
 
 }
 
@@ -57,6 +57,7 @@ export class Message {
 
     target: string;
     field: string;
+    err?: string;
     mode: MessageMode;
     data: number | string | object;
 
@@ -71,7 +72,7 @@ export class Message {
 
         const m = new Message(this.target, this.field, this.mode);
 
-        m.data = this.data;
+        m.data = _.cloneDeep(this.data);
 
         return m;
     }
@@ -81,8 +82,13 @@ export class Message {
             t: this.target,
             f: this.field,
             m: this.mode,
-            d: this.data
+            d: this.data,
+            e: this.err
         });
+    }
+
+    isError(){
+        return (this.err != undefined) && this.err.length > 0;
     }
 
     static Set(tg: string, fld: string): Message {
@@ -124,6 +130,9 @@ export class Message {
 
         m.data = obj.d;
 
+        if(obj.e && obj.e.length > 0)
+            m.err = obj.e;
+
         return m;
     }
 
@@ -148,6 +157,41 @@ export class Message {
     }
 
 }
+
+export class Requester extends EventEmitter {
+
+    request_target: string;
+    connection: Connection;
+
+    constructor(connection: Connection, target: string) {
+        super();
+
+        this.request_target = target;
+        this.connection = connection;
+
+        // propagate events to the listener
+        this.connection.on(target, (msg: Message) => {
+            if(msg.mode == MessageMode.EVT)
+                this.emit(msg.field);
+        });
+    }
+
+    async request(value: string, data?: any) {
+        return this.connection.request(this.request_target, value, 10000, data);
+    }
+
+    async requestTmt(value: string, timeout: number, data?: any){
+        return this.connection.request(this.request_target, value, timeout, data);
+    }
+
+    async set(value: string, data?: any) {
+        return this.connection.set(this.request_target, value, 10000, data);
+    }
+
+    async setTmt(value: string, timeout: number, data?: any){
+        return this.connection.set(this.request_target, value, timeout, data);
+    }
+};
 
 
 export class Connection extends EventEmitter {
@@ -199,7 +243,6 @@ export class Connection extends EventEmitter {
         _log_msg(msg, true);
 
         this.socket.write(msg.toString() + '\0');
-
     }
 
     decodeMessage(str: string){
@@ -211,38 +254,49 @@ export class Connection extends EventEmitter {
         this.emit(msg.target, msg);
     }
 
-    async request(tg: string, fld: string, timeout?: number, data?: string) : Promise<Message> {
+    getRequester(target: string) {
+        return new Requester(this, target);
+    }
+
+    async _do_request(req: boolean, tg: string, fld: string, timeout?: number, data?: any) : Promise<Message> {
 
         let self = this
 
         return new Promise((resolve, reject) => {
 
             let tmt = setTimeout(() => {
-
                 self.removeListener(tg, response_listener);
-
                 reject("timeout");
-
             }, timeout || 1000);
 
             let response_listener = (msg: Message) => {
 
-                self.removeListener(tg, response_listener);
+                if(msg.field == fld && msg.mode != MessageMode.EVT) {
 
-                clearTimeout(tmt);
+                    self.removeListener(tg, response_listener);
+                    clearTimeout(tmt);
 
-                resolve(msg);
+                    if(msg.isError())
+                        reject(new Error(<string> msg.err));
+                    else
+                        resolve(msg);
+                }
             }
 
-            let msg = Message.Get(tg, fld);
+            let msg = (req)? Message.Get(tg, fld) : Message.Set(tg, fld);
 
             msg.data = data;
-
             this.addListener(tg, response_listener);
-
             this.send(msg);
-
         });
 
+    }
+
+    async request(tg: string, fld: string, timeout?: number, data?: any): Promise<Message> {
+        return this._do_request(true, tg, fld, timeout, data);
+    }
+
+    async set(tg: string, fld: string, timeout?: number, data?: any): Promise<Message> {
+        return this._do_request(false, tg, fld, timeout, data);
     }
 }

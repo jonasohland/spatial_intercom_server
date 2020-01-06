@@ -1,0 +1,79 @@
+{
+    "nodes": [
+        {
+            "type": "__input",
+            "name": "__input",
+            "send": [
+                {
+                    "offset": 0,
+                    "type": "any",
+                    "count": 32
+                }
+            ]
+        },
+        {
+            "type": "__output",
+            "name": "__output",
+            "receive": [
+                {
+                    "offset": 0,
+                    "type": "any",
+                    "count": 32
+                }
+            ]
+        },
+        {
+            "type": "vst_processor",
+            "name": "ambi_binauralizer",
+            "plugin_identifier": "VST-BinauralDecoder-7fc441cf-42694465",
+            "receive": [
+                {
+                    "offset": 0,
+                    "type": "ambi",
+                    "count": 1,
+                    "ambi": {
+                        "order": 3,
+                        "chs": 16
+                    }
+                }
+            ],
+            "send": [
+                {
+                    "offset": 0,
+                    "type": "stereo",
+                    "count": 1
+                }
+            ]
+        }
+    ],
+    "edges": [
+        {
+            "name": "__input->ambi_binauralizer",
+            "type": "ambi",
+            "ambi": {
+                "order": 3,
+                "chs": 16
+            },
+            "src": {
+                "name": "__input",
+                "offset": 4
+            },
+            "dest": {
+                "name": "ambi_binauralizer",
+                "offset": 0
+            }
+        },
+        {
+            "name": "ambi_binauralizer->__output",
+            "type":"stereo",
+            "src":{
+                "name":"ambi_binauralizer",
+                "offset": 0
+            },
+            "dest":{
+                "name":"__output",
+                "offset": 4
+            }
+        }
+    ]
+}

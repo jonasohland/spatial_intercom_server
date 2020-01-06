@@ -65,6 +65,6 @@ export function get(module_name: string): winston.Logger
             winston.format.timestamp(),
             cformat),
         transports :
-            [ new winston.transports.Console({ level : 'verbose' }), rct ]
+            [ new winston.transports.Console({ level : 'info' }), rct ]
     });
 }
