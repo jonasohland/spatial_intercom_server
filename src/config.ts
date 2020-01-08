@@ -9,13 +9,25 @@ import * as Logger from './log';
 
 const log = Logger.get('CFG');
 
-let config_path = os.userInfo().homedir + '/.siserver';
+const _config_path = os.userInfo().homedir + '/.spatial_intercom';
+let _config_file: any = {};
 
-let conf_file: any = {};
+export function loadConfigFile() {
 
-if (fs.existsSync(config_path)) {
-    log.info('Loading configuration file from ' + config_path);
-    conf_file = ini.parse(fs.readFileSync(config_path).toString());
+    if (fs.existsSync(_config_path)) {
+        log.info('Loading configuration file from ' + _config_path);
+        _config_file = ini.parse(fs.readFileSync(_config_path).toString());
+    }
+}
+
+
+function getNodeName(options: any)
+{
+    let conf_file_name;
+
+    if (_config_file.instance) conf_file_name = _config_file.instance.name;
+
+    return options.nodeName || conf_file_name || os.hostname();
 }
 
 function getInterface(option: string, interfaces: any)
@@ -28,35 +40,36 @@ function getInterface(option: string, interfaces: any)
         log.error('Could not find network interface ' + option);
 }
 
-function parseWebserverOptions() {
-    
-}
+function parseWebserverOptions() {}
 
 export function merge(cmd_opts: commander.Command)
 {
-    let output: { htrk_interface?: string, web_interface?: string } = {};
+    let output:
+        { interface?: string, web_interface?: string, node_name?: string }
+    = {};
 
-    if (!conf_file.network) conf_file.network = {};
+    if (!_config_file.network) _config_file.network = {};
 
-    let htrk_if_opt: string
-        = cmd_opts.htrkInterface || conf_file.network.htrk_interface
-          || cmd_opts.interface || conf_file.network.interface;
+    let interface_: string
+        = cmd_opts.interface || _config_file.network.interface;
 
     let webif_opt: string
-        = cmd_opts.webInterface || conf_file.network.web_interface
-          || cmd_opts.interface || conf_file.network.interface;
+        = cmd_opts.webInterface || _config_file.network.web_interface
+          || cmd_opts.interface || _config_file.network.interface;
 
     const netifs = os.networkInterfaces();
 
-    if (htrk_if_opt)
-        output.htrk_interface = (net.isIP(htrk_if_opt))
-                                    ? htrk_if_opt
-                                    : getInterface(htrk_if_opt, netifs);
+    if (interface_)
+        output.interface = (net.isIP(interface_))
+                                    ? interface_
+                                    : getInterface(interface_, netifs);
 
     if (webif_opt)
         output.web_interface = (net.isIP(webif_opt))
                                    ? webif_opt
                                    : getInterface(webif_opt, netifs);
+
+    output.node_name = getNodeName(cmd_opts);
 
     return output;
 }

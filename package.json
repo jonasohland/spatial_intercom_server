@@ -21,6 +21,7 @@
     "@types/lodash": "^4.14.149",
     "@types/node": "^12.12.20",
     "@types/socket.io": "^2.1.4",
+    "@types/socket.io-client": "^1.4.32",
     "@types/split2": "^2.1.6",
     "chalk": "^2.4.2",
     "commander": "^4.0.1",
@@ -42,5 +43,8 @@
     "jsxBracketSameLine": false,
     "arrowParens": "avoid",
     "endOfLine": "auto"
+  },
+  "devDependencies": {
+    "typedoc": "^0.15.6"
   }
 }

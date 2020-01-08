@@ -1,20 +1,11 @@
-import construct_bonjour from 'bonjour'
-import datagram from 'dgram'
+import * as mdns from 'dnssd'
 
-const bonjour = construct_bonjour();
+export function getServerAdvertiser(netif?: string) 
+{
+    return new mdns.Advertisement(mdns.tcp('si-server'), 45045, { interface: netif });
+}
 
-const browser = bonjour.find({ type: 'tracking_stream', protocol: 'udp' }, function (service) {
-
-    console.log(service);
-
-    let watchdog_socket = datagram.createSocket('udp4', (msg, rinfo) => {
-
-    });
-
-    watchdog_socket.on('error', err => {
-
-    });
-
-    watchdog_socket.bind(10551);
-
-});
+export function getServerBrowser(netif?: string) 
+{
+    return new mdns.Browser(mdns.tcp('si-server'), { interface: netif });
+}

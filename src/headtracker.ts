@@ -159,15 +159,11 @@ export class HeadtrackerDataPacket {
     }
 }
 
-interface HeadtrackerSettings {
-
+interface HeadtrackerNetworkSettings {
     id: number
-
-    dhcp: boolean;
-
-    local_ip: string;
-    local_subnet: string;
-    local_gateway: string;
+    addr: string,
+    subnet: string,
+    dhcp: boolean
 }
 
 export class HeadtrackerConfigPacket {
@@ -661,15 +657,15 @@ export class Headtracker extends EventEmitter {
         this._updateDevice();
     }
 
-    applySettings(settings: HeadtrackerSettings)
+    applyNetworkSettings(settings: HeadtrackerNetworkSettings)
     {
         if (settings.id) this.local.conf.setDeviceID(settings.id);
 
-        if (settings.local_ip)
-            this.local.conf.device_static_ip = settings.local_ip;
+        if (settings.addr)
+            this.local.conf.device_static_ip = settings.addr;
 
-        if (settings.local_subnet)
-            this.local.conf.device_static_subnet = settings.local_subnet;
+        if (settings.subnet)
+            this.local.conf.device_static_subnet = settings.subnet;
 
         if (settings.dhcp != undefined) {
 
@@ -679,6 +675,7 @@ export class Headtracker extends EventEmitter {
                 this.local.conf.clearNetworkFlag(HeadtrackerNetworkFlags.DHCP);
         }
 
+        this.local.conf.setDeviceFlag(HeadtrackerConfigFlags.UPDATE);
         this._updateDevice();
     }
 
@@ -712,6 +709,13 @@ export class Headtracker extends EventEmitter {
             this.remote.id}`);
 
         this._updateDevice();
+    }
+
+    destroy() 
+    {
+        this.socket.close();
+        clearTimeout(this.response_timeout);
+        clearTimeout(this.check_alive_timeout);
     }
 
     start()
@@ -772,10 +776,9 @@ export class Headtracking extends EventEmitter {
                 self.getHeadtracker(id).save();
             });
 
-            socket.on('htrk.settings.updated',
-                      (id: number, settings: HeadtrackerSettings) => {
-
-                      });
+            socket.on('htrk.save.settings', (settings: HeadtrackerNetworkSettings) => {
+                self.getHeadtracker(settings.id).applyNetworkSettings(settings);
+            });
         });
     }
 
@@ -789,11 +792,18 @@ export class Headtracking extends EventEmitter {
                                    id,
                                    service.addresses[0],
                                    11023,
-                                   4009,
+                                   0,
                                    this.local_interface);
         htrk.start();
 
         htrk.on('update', this.updateRemote.bind(this));
+
+        let dup = this.trackers.find(trk => trk.remote.id == id)
+
+        if(dup){
+            dup.destroy();
+            this.trackers.splice(this.trackers.indexOf(dup), 1);
+        }
 
         this.trackers.push(htrk);
 
@@ -811,23 +821,31 @@ export class Headtracking extends EventEmitter {
     {
 
         let tracker_update = this.trackers.map((tracker: Headtracker) => {
-            return {
-                data: {
-                    // clang-format off
-                    address:        tracker.remote.addr,
-                    gyro_online:    tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_PRESENT),
-                    gyro_ready:     tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_RDY),
-                    online:         tracker._state(HTRKDevState.CONNECTED) || tracker._state(HTRKDevState.BUSY),
-                    samplerate:     tracker.remote.conf.sample_rate,
-                    stream_on:      tracker.remote.conf.isDeviceFlagSet(HeadtrackerConfigFlags.STREAM_ENABLED),
-                    id:             tracker.remote.conf.deviceID()
-                    // clang-format on
+
+            if(tracker.remote.conf)
+                return {
+                    data: {
+                        // clang-format off
+                        address:        tracker.remote.addr,
+                        gyro_online:    tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_PRESENT),
+                        gyro_ready:     tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_RDY),
+                        online:         tracker._state(HTRKDevState.CONNECTED) || tracker._state(HTRKDevState.BUSY),
+                        samplerate:     tracker.remote.conf.sample_rate,
+                        stream_on:      tracker.remote.conf.isDeviceFlagSet(HeadtrackerConfigFlags.STREAM_ENABLED),
+                        id:             tracker.remote.conf.deviceID(),
+
+                        settings: {
+                            id: tracker.remote.conf.deviceID(),
+                            addr: tracker.remote.conf.device_static_ip,
+                            subnet: tracker.remote.conf.device_static_subnet,
+                            dhcp: tracker.remote.conf.isNetworkFlagSet(HeadtrackerNetworkFlags.DHCP)
+                        }
+                        // clang-format on
+                    }
                 }
-            }
-
-        });
-
-        console.log(tracker_update);
+            else 
+                return null;
+        }).filter(v => v != null);
 
         if (socket)
             socket.emit('htrk.update', tracker_update);
