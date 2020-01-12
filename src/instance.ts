@@ -29,15 +29,17 @@ export interface InstanceNetworkInformations {
 export class SpatialIntercomInstance {
 
     name: string;
+    id: string;
     io: io.Socket;
     graph: DSP.Graph;
     dsp: IPC.Connection;
     devices: AudioDevices.Manager;
     service_browser: mdns.Browser;
 
-    constructor(nodename: string, local: boolean, dsp?: io.Socket)
+    constructor(nodename: string, nid: string, local: boolean, dsp?: io.Socket)
     {
-        this.name = nodename;
+        this.name = nodename;   
+        this.id = nid;
 
         if (local)
             this.dsp = new IPC.LocalConnection('default');

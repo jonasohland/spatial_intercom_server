@@ -3,6 +3,8 @@ import * as configuration from './config'
 import * as discovery from './discovery'
 import * as mdns from 'dnssd'
 import io from 'socket.io-client'
+import * as mid from 'node-machine-id'
+import * as os from 'os';
 
 export function run(options: any) {
 
@@ -21,7 +23,8 @@ export function run(options: any) {
         });
 
         socket.on('__name', () => {
-            socket.emit('__name', service.name);
+            let id = mid.machineIdSync();
+            socket.emit('__name', os.hostname(), id);
         });
 
     });

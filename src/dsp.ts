@@ -37,6 +37,19 @@ export enum PortTypes {
     Ambi_O11
 }
 
+export function stringToPortType(str: string)
+{
+    switch (str.toLocaleLowerCase()) {
+        case 'mono': return PortTypes.Mono;
+        case 'st': return PortTypes.Stereo;
+        case 'stereo': return PortTypes.Stereo;
+        case 'surround': return PortTypes.Surround_5_1;
+        case '5.1': return PortTypes.Surround_5_1;
+        case '5_1': return PortTypes.Surround_5_1;
+        default: return PortTypes.Any;
+    }
+}
+
 export const PortTypeChannelCount = [
     1,      // Any
     1,      // Mono
