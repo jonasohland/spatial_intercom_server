@@ -2,6 +2,7 @@ import {EventEmitter} from 'events';
 
 import * as IPC from './ipc'
 import * as Logger from './log';
+import { isRegExp } from 'util';
 
 const log = Logger.get('DSP');
 
@@ -227,7 +228,6 @@ export class Bus {
         let i                 = otherIndex;
 
         do {
-
             let cport = other.ports[i];
 
             other_chcount += cport.c;
@@ -508,7 +508,8 @@ export abstract class Module {
     abstract input(graph: Graph): Bus;
     abstract output(graph: Graph): Bus;
     abstract graphChanged(graph: Graph): void;
-    abstract build(graph: Graph): void
+    abstract build(graph: Graph): void;
+    abstract destroy(graph: Graph): void;
 }
 
 export class Graph {
@@ -566,7 +567,7 @@ export class Graph {
             rmv_node = this.nodes.splice(this.nodes.indexOf(node))[0];
         else if (typeof node == 'number')
             rmv_node = this.nodes.splice(
-                this.nodes.findIndex(n => n.id === node))[0];
+                this.nodes.findIndex(n => n.id === node), 1)[0];
 
         if (rmv_node) rmv_node._unset_nodeid(true);
 
@@ -627,6 +628,27 @@ export class Graph {
         mod.id    = this.node_count;
         mod.graph = this;
         this.modules.push(mod);
+        this.rebuild();
+    }
+
+    hasModule(mod: Module)
+    {
+        return this.modules.indexOf(mod) != -1;
+    }
+
+    removeModule(mod: Module)
+    {
+        let mod_idx = this.modules.indexOf(mod);
+
+        if(mod_idx == -1)
+            return null && log.error("Could not find Module to remove");
+
+        let removed = this.modules.splice(mod_idx, 1)[0];
+        
+        if(removed) 
+            removed.destroy(this);
+
+        return removed;
     }
 
     async sync()
@@ -638,30 +660,34 @@ export class Graph {
             self.remote.request('set', this._export())
             .then(() => { log.info('Done Syncing')
                             resolve() })
-            .catch(err => { log.error('Could not sync graph: ' + err)
+            .catch(err => { log.error('Could not sync graph: ' + err.message)
                             reject() });
         });
     }
 
+    rebuild() {
+        this.modules.forEach(mod => mod.graphChanged(this));
+    }
+
     _export()
     {
-        return {
+        let out = {
             nodes : this.nodes.map(n => {
+
                 let obj = <any> {}
 
                 obj.ins_count  = n.mainIn() ? n.mainIn().channelCount() : 0;
                 obj.outs_count = n.mainOut() ? n.mainOut().channelCount() : 0;
 
-                Object.assign(obj, n);
-
-                delete obj.receives;
-                delete obj.sends;
-                delete obj.inputs;
-                delete obj.outputs;
+                obj.id = n.id;
+                obj.type = n.type;
+                obj.name = n.name;
+                obj.processor_type = (<NativeNode> n).processor_type;
 
                 return obj;
             }),
             connections : this.connections
         };
+        return out;
     }
 }

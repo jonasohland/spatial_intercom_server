@@ -2,12 +2,11 @@ import EventEmitter from 'events';
 import fs from 'fs'
 import _ from 'lodash'
 import Net from 'net';
-import split from 'split2'
-import { InstanceID } from './instance'
-
 import * as IOServer from 'socket.io'
 import io from 'socket.io-client'
+import split from 'split2'
 
+import {InstanceID} from './instance'
 import * as Logger from './log'
 
 const log = Logger.get('PIP');
@@ -290,10 +289,7 @@ export abstract class Connection extends EventEmitter {
         this.emit(msg.target, msg);
     }
 
-    connectionFound()
-    {
-
-    }
+    connectionFound() {}
 }
 
 export class LocalConnection extends Connection {
@@ -363,16 +359,15 @@ export class RemoteConnection extends Connection {
         this.socket = socket;
     }
 
-    begin(): void 
+    begin(): void
     {
         let self = this;
 
         this.socket.on('ipc-bridge-begin', () => {
-
             log.info('Remote DSP process connected');
 
             self.socket.on('disconnect', (reason: string) => {
-                log.warn('Remote DSP process disconnected '+ reason);
+                log.warn('Remote DSP process disconnected ' + reason);
             });
 
             self.socket.on('msg', (data: string) => {
@@ -384,14 +379,14 @@ export class RemoteConnection extends Connection {
         });
 
         this.socket.emit('ipc-bridge-init');
-    }    
-    
-    send(msg: Message): void 
+    }
+
+    send(msg: Message): void
     {
         this.socket.emit('msg', msg.toString());
     }
 
-    isLocal(): boolean 
+    isLocal(): boolean
     {
         return false;
     }
@@ -400,24 +395,51 @@ export class RemoteConnection extends Connection {
 export class IPCBridge extends EventEmitter {
 
     ipc_socket: Net.Socket;
+    ipc_server: Net.Server;
     socket: SocketIOClient.Socket;
     name: string
     connected: boolean;
 
-    constructor(socket: SocketIOClient.Socket , name: string)
+    constructor(socket: SocketIOClient.Socket, name: string)
     {
         super();
         this.socket = socket;
-        this.name = name;
+        this.name   = name;
+
+        let self = this;
+
+        this.socket.on('connect', () => {
+            self.begin();
+        });
+
+        this.socket.on('disconnect', () => {
+            self.end();
+        });
+
+        this.socket.on('msg', (msg: string) => {
+            
+            _log_msg(Message.parse(msg), true);
+
+            if(self.ipc_socket)
+                self.ipc_socket.write(msg + '\0');
+        })
+
+        this.socket.on('ipc-bridge-init', () => {
+
+            log.info("Received IPC bridge init msg");
+
+            if(self.connected)
+                self.socket.emit('ipc-bridge-begin');
+        })
     }
 
-    begin()
+    begin() 
     {
         let self = this;
 
-        _make_pipe(this.name, (sock: Net.Socket) => {
+        this.ipc_server = _make_pipe(this.name, (sock) => {
 
-            log.info('Local DSP process connected');
+            this.ipc_socket = sock;
 
             sock.pipe(split('\0')).on('data', data => {
                 _log_msg(Message.parse(data), false);
@@ -425,14 +447,17 @@ export class IPCBridge extends EventEmitter {
             });
 
             sock.on('close', (err: Error) => {
+
                 if (err)
                     log.warn('Local DSP process disconnected with error:  '
                              + err.message);
                 else
                     log.info('Local DSP process disconnected');
 
+                self.connected = false;
                 self.socket.close();
                 self.emit('close');
+                self.ipc_server.close();
             });
 
             sock.on('error', (err: Error) => {
@@ -442,22 +467,13 @@ export class IPCBridge extends EventEmitter {
             self.ipc_socket = sock;
             self.connected = true;
             self.socket.emit('ipc-bridge-begin');
+
         });
-
-        self.socket.on('msg', (msg: string) => {
-            
-            _log_msg(Message.parse(msg), true);
-
-            if(self.ipc_socket)
-                self.ipc_socket.write(msg + '\0');
-        })
-
-        self.socket.on('ipc-bridge-init', () => {
-
-            log.info("Received IPC bridge init msg");
-
-            if(self.connected)
-                self.socket.emit('ipc-bridge-begin');
-        })
     }
+
+    end()
+    {
+        this.ipc_server.close();
+    }
+
 }

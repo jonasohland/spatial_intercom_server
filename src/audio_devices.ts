@@ -74,7 +74,6 @@ export class Manager {
 
     constructor(con: IPC.Connection)
     {
-
         this.remote = con.getRequester('devmgmt');
         this.dsp    = con.getRequester('dsp');
 
@@ -233,13 +232,13 @@ export class Manager {
                            await this.remote.request('device-channels'))
                            .data;
 
-        channels.inputs.map((ch, i) => {
+        channels.inputs = <any>channels.inputs.map((ch, i) => {
             return {
                 name: ch, i: i
             }
         });
 
-        channels.outputs.map((ch, i) => {
+        channels.outputs = <any>channels.outputs.map((ch, i) => {
             return {
                 name: ch, i: i
             }
@@ -364,6 +363,18 @@ export class AudioDeviceManager extends EventEmitter {
                             .then(confirm)
                             .catch(do_catch);
                 });
+
+            socket.on('audiosettings.dspuse',
+                      () => { this.instances.forEach(ins => {
+                          ins.instance.devices.refreshDSPLoad()
+                              .then(() => {
+                                  socket.emit('audiosettings.dspuse', {
+                                      id : ins.instance.id,
+                                      value : ins.instance.devices.status.dspUse
+                                  });
+                              })
+                              .catch(err => log.error(err));
+                      }) });
         });
     }
 

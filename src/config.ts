@@ -1,7 +1,6 @@
 import commander from 'commander';
 import * as fs from 'fs';
 import ini from 'ini';
-import isIp from 'is-ip';
 import * as net from 'net';
 import * as os from 'os';
 

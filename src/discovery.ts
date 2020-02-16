@@ -1,11 +1,16 @@
-import * as mdns from 'dnssd'
+import * as dnssd from 'dnssd'
+
+export function getWebinterfaceAdvertiser(netif?: string)
+{
+    return new dnssd.Advertisement(dnssd.tcp('http'), 8090, { interface: netif, name: "Spatial Intercom Manager" });
+}
 
 export function getServerAdvertiser(netif?: string) 
 {
-    return new mdns.Advertisement(mdns.tcp('si-server'), 45045, { interface: netif });
+    return new dnssd.Advertisement(dnssd.tcp('si-server'), 45045, { interface: netif });
 }
 
 export function getServerBrowser(netif?: string) 
 {
-    return new mdns.Browser(mdns.tcp('si-server'), { interface: netif });
+    return new dnssd.Browser(dnssd.tcp('si-server'), { interface: netif });
 }

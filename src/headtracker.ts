@@ -118,13 +118,20 @@ export enum HeadtrackerConfigFlags {
 }
 
 export enum HeadtrackerNetworkFlags {
-    UPDATE = 1,
-    DHCP   = 2,
+    DHCP = 1
 }
 
 export enum HeadtrackerStateFlags {
-    GY_PRESENT = 1,
-    GY_RDY     = 2,
+    GY_PRESENT        = 1,
+    GY_RDY            = 2,
+    RESET_ORIENTATION = 4,
+    INVERT_X          = 8,
+    INVERT_Y          = 16,
+    INVERT_Z          = 32
+}
+
+export interface HeadtrackerInvertation {
+    x: boolean, y: boolean, z: boolean
 }
 
 export class HeadtrackerDataPacket {
@@ -161,9 +168,7 @@ export class HeadtrackerDataPacket {
 
 interface HeadtrackerNetworkSettings {
     id: number
-    addr: string,
-    subnet: string,
-    dhcp: boolean
+    addr: string, subnet: string, dhcp: boolean
 }
 
 export class HeadtrackerConfigPacket {
@@ -354,6 +359,7 @@ export class Headtracker extends EventEmitter {
 
     update_required: boolean;
     dumping: boolean;
+    resetting_orientation: boolean;
 
     remote: {
         conf?: HeadtrackerConfigPacket;
@@ -433,26 +439,31 @@ export class Headtracker extends EventEmitter {
 
     _onMessage(m: Buffer)
     {
-        log.verbose('Received message, size: ' + m.length);
-
         // this is a regular status update
         if (HeadtrackerConfigPacket.check(m)) {
 
             clearTimeout(this.response_timeout);
 
+            let p = HeadtrackerConfigPacket.fromBuffer(m);
+
+            if (this.resetting_orientation) {
+                if (!p.isStateFlagSet(
+                        HeadtrackerStateFlags.RESET_ORIENTATION)) {
+                    log.info('Orientation reset on Headtracker '
+                             + p.deviceID());
+                    this.resetting_orientation = false;
+                }
+            }
+
             if (this._state() == HTRKDevState.TIMEOUT) {
 
-                this.server.emit(
-                    'htrk.reconnected', this.remote.conf.deviceID());
+                this.server.emit('htrk.reconnected', p.deviceID());
+                log.info(`Headtracker ${p.deviceID()} reconnected`);
 
                 this._setState(HTRKDevState.BUSY);
                 this._updateRemote();
                 return this._askAliveLater();
             }
-
-            let p = HeadtrackerConfigPacket.fromBuffer(m);
-
-            log.verbose('Device ID: ' + p.deviceID());
 
             if (p.isDeviceFlagSet(HeadtrackerConfigFlags.UPDATE)) {
 
@@ -500,11 +511,14 @@ export class Headtracker extends EventEmitter {
 
     _onResponseTimeout()
     {
-        log.info('Headtracking unit timed out');
-
         if (this._state() != HTRKDevState.TIMEOUT) {
+
+            log.info('Headtracking unit timed out');
+
             this._setState(HTRKDevState.TIMEOUT);
-            this.server.emit('htrk.disconnected', this.remote.conf.deviceID());
+            this.server.emit(
+                'htrk.disconnected',
+                (this.remote.conf) ? this.remote.conf.deviceID() : 'unknown');
             this._updateRemote();
         }
 
@@ -550,7 +564,7 @@ export class Headtracker extends EventEmitter {
 
         this.remote.conf = m;
 
-        log.verbose(`Handling ${is_req ? 'requested ' : ''}state update`);
+        log.silly(`Handling ${is_req ? 'requested ' : ''}state update`);
 
         if (!this.update_required) this.local.conf = m;
 
@@ -627,7 +641,6 @@ export class Headtracker extends EventEmitter {
 
     _setState(s: HTRKDevState)
     {
-        log.verbose('New state: ' + HTRKDevState[s]);
         this.remote.state = s;
     }
 
@@ -652,8 +665,40 @@ export class Headtracker extends EventEmitter {
 
     setStreamDest(ip: string, port: number)
     {
+        log.info(`Setting headtracker ${
+            this.remote.conf.deviceID()} stream destination address to ${ip}:${
+            port}`);
         this.local.conf.stream_dest_addr = ip;
         this.local.conf.stream_dest_port = port;
+        this._updateDevice();
+    }
+
+    setInvertation(invertation: HeadtrackerInvertation)
+    {
+        if (invertation.x)
+            this.local.conf.setStateFlag(HeadtrackerStateFlags.INVERT_X);
+        else
+            this.local.conf.clearStateFlag(HeadtrackerStateFlags.INVERT_X);
+
+        if (invertation.y)
+            this.local.conf.setStateFlag(HeadtrackerStateFlags.INVERT_Y);
+        else
+            this.local.conf.clearStateFlag(HeadtrackerStateFlags.INVERT_Y);
+
+        if (invertation.z)
+            this.local.conf.setStateFlag(HeadtrackerStateFlags.INVERT_Z);
+        else
+            this.local.conf.clearStateFlag(HeadtrackerStateFlags.INVERT_Z);
+
+        console.log(this.local.conf.device_state);
+
+        this._updateDevice();
+    }
+
+    resetOrientation()
+    {
+        this.local.conf.setStateFlag(HeadtrackerStateFlags.RESET_ORIENTATION);
+        this.resetting_orientation = true;
         this._updateDevice();
     }
 
@@ -661,8 +706,7 @@ export class Headtracker extends EventEmitter {
     {
         if (settings.id) this.local.conf.setDeviceID(settings.id);
 
-        if (settings.addr)
-            this.local.conf.device_static_ip = settings.addr;
+        if (settings.addr) this.local.conf.device_static_ip = settings.addr;
 
         if (settings.subnet)
             this.local.conf.device_static_subnet = settings.subnet;
@@ -711,7 +755,7 @@ export class Headtracker extends EventEmitter {
         this._updateDevice();
     }
 
-    destroy() 
+    destroy()
     {
         this.socket.close();
         clearTimeout(this.response_timeout);
@@ -776,9 +820,20 @@ export class Headtracking extends EventEmitter {
                 self.getHeadtracker(id).save();
             });
 
-            socket.on('htrk.save.settings', (settings: HeadtrackerNetworkSettings) => {
-                self.getHeadtracker(settings.id).applyNetworkSettings(settings);
-            });
+            socket.on('htrk.invert.changed',
+                      (id: number, inv: HeadtrackerInvertation) => {
+                          log.info('Invertation changed on headtracker ' + id)
+                          self.getHeadtracker(id).setInvertation(inv) });
+
+                          socket.on('htrk.save.settings',
+                                    (settings: HeadtrackerNetworkSettings) => {
+                                        self.getHeadtracker(settings.id)
+                                            .applyNetworkSettings(settings);
+                                    });
+
+                          socket.on('htrk.reset.orientation',
+                                    (id: number) => self.getHeadtracker(id)
+                                                        .resetOrientation());
         });
     }
 
@@ -800,7 +855,8 @@ export class Headtracking extends EventEmitter {
 
         let dup = this.trackers.find(trk => trk.remote.id == id)
 
-        if(dup){
+        if (dup)
+        {
             dup.destroy();
             this.trackers.splice(this.trackers.indexOf(dup), 1);
         }
@@ -819,33 +875,40 @@ export class Headtracking extends EventEmitter {
 
     updateRemote(socket?: SocketIO.Socket)
     {
-
-        let tracker_update = this.trackers.map((tracker: Headtracker) => {
-
-            if(tracker.remote.conf)
+        // clang-format off
+        let tracker_update = this.trackers
+            .map((tracker: Headtracker) => {
+                if (tracker.remote.conf) 
                 return {
-                    data: {
-                        // clang-format off
-                        address:        tracker.remote.addr,
-                        gyro_online:    tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_PRESENT),
-                        gyro_ready:     tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_RDY),
-                        online:         tracker._state(HTRKDevState.CONNECTED) || tracker._state(HTRKDevState.BUSY),
-                        samplerate:     tracker.remote.conf.sample_rate,
-                        stream_on:      tracker.remote.conf.isDeviceFlagSet(HeadtrackerConfigFlags.STREAM_ENABLED),
-                        id:             tracker.remote.conf.deviceID(),
+                        data: {
+                            address:        tracker.remote.addr,
+                            gyro_online:    tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_PRESENT),
+                            gyro_ready:     tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.GY_RDY),
+                            online:         tracker._state(HTRKDevState.CONNECTED) || tracker._state(HTRKDevState.BUSY),
+                            samplerate:     tracker.remote.conf.sample_rate,
+                            stream_on:      tracker.remote.conf.isDeviceFlagSet(HeadtrackerConfigFlags.STREAM_ENABLED),
+                            id:             tracker.remote.conf.deviceID(),
 
-                        settings: {
-                            id: tracker.remote.conf.deviceID(),
-                            addr: tracker.remote.conf.device_static_ip,
-                            subnet: tracker.remote.conf.device_static_subnet,
-                            dhcp: tracker.remote.conf.isNetworkFlagSet(HeadtrackerNetworkFlags.DHCP)
+                            settings: {
+                                id: tracker.remote.conf.deviceID(),
+                                addr: tracker.remote.conf.device_static_ip,
+                                subnet: tracker.remote.conf.device_static_subnet,
+                                dhcp: tracker.remote.conf.isNetworkFlagSet(HeadtrackerNetworkFlags.DHCP)
+                            },
+
+                            invert: {
+                                x: tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.INVERT_X),
+                                y: tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.INVERT_Y),
+                                z: tracker.remote.conf.isStateFlagSet(HeadtrackerStateFlags.INVERT_Z)
+                            }
+                            
                         }
-                        // clang-format on
                     }
-                }
-            else 
-                return null;
-        }).filter(v => v != null);
+                else
+                    return null;
+            })
+            .filter(v => v != null);
+        // clang-format on
 
         if (socket)
             socket.emit('htrk.update', tracker_update);

@@ -26,6 +26,7 @@ class RemoteConsoleTransport extends Transport {
     constructor()
     {
         super();
+        this.setMaxListeners(20);
     }
 
     attach(s: SocketIO.Server)
