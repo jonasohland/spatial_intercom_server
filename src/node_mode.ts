@@ -25,8 +25,6 @@ Object.keys(ifaces).forEach(function (ifname) {
   });
 });
 
-console.log(local_addresses);
-
 export function run(options: any) {
 
     configuration.loadConfigFile();
@@ -39,14 +37,16 @@ export function run(options: any) {
 
     browser.on('serviceUp', (service: mdns.Service) => {
 
-        socket = io(`ws://${service.addresses[0]}:${service.port}`);
+        let serveraddr = `ws://${service.addresses[0]}:${service.port}`
+
+        socket = io(serveraddr, { reconnectionDelayMax: 1000 });
 
         socket.on('__name', () => {
             let id = mid.machineIdSync();
             socket.emit('__name', os.hostname(), id, local_addresses);
         });
 
-        ipc_bridge = new IPC.IPCBridge(socket, 'default');
+        ipc_bridge = new IPC.IPCBridge(socket, serveraddr, 'default');
 
     });
 

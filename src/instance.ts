@@ -5,7 +5,7 @@ import winston, { add } from 'winston'
 import * as AudioDevices from './audio_devices'
 import * as DSP from './dsp'
 import * as VST from './vst';
-import * as DSPModules from './dsp-modules'
+import * as DSPModules from './dsp_modules'
 import * as IPC from './ipc'
 import * as Logger from './log'
 

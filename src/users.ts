@@ -4,7 +4,7 @@ import {checkServerIdentity} from 'tls';
 import fclone from 'fclone';
 import * as Audio from './audio_devices';
 import * as DSP from './dsp';
-import {BasicSpatializer, BasicUserModule, BasicSpatializerModule, AdvancedSpatializerModule, SpatializationModule } from './dsp-modules';
+import {BasicSpatializer, BasicUserModule, BasicSpatializerModule, AdvancedSpatializerModule, SpatializationModule } from './dsp_modules';
 import * as Inputs from './inputs';
 import * as Instance from './instance';
 import * as Logger from './log';

@@ -1,6 +1,6 @@
 import * as commander from 'commander'
-import * as node_mode from './node-mode'
-import * as server_mode from './server-mode'
+import * as node_mode from './node_mode'
+import * as server_mode from './server_mode'
 
 const program = new commander.Command();
 

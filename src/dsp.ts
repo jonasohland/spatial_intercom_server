@@ -22,6 +22,7 @@ export enum PortTypes {
     Surround_10_2,
     Surround_11_1,
     Surround_22_2,
+    x3D_5_4_1,
     x3D_7_4_1,
     x3D_4_0_4,
     Ambi_O0,
@@ -61,6 +62,7 @@ export const PortTypeChannelCount = [
     12,     // 10.2
     12,     // 11.1
     24,     // 22.2
+    10,     // 5.4.1
     12,     // 7.4.1
     8,      // 4.0.4
     1,      // Ambi O0

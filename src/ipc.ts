@@ -36,7 +36,6 @@ function _pipename(name: string): string
 
 function _make_pipe(name: string, callback: (sock: Net.Socket) => void)
 {
-
     let pname = _pipename(name);
 
     if (!(process.platform == 'win32') && fs.existsSync(pname))
@@ -64,6 +63,12 @@ function _log_msg(msg: Message, input: boolean)
             ty}] -> ${msg.data}`);
 }
 
+function deleteLocalPipe(name: string)
+{
+    if(fs.existsSync(_pipename(name)))
+        fs.unlinkSync(_pipename(name));
+}
+
 export class Message {
 
     target: string;
@@ -82,7 +87,6 @@ export class Message {
 
     copy(): Message
     {
-
         const m = new Message(this.target, this.field, this.mode);
 
         m.data = _.cloneDeep(this.data);
@@ -364,6 +368,9 @@ export class RemoteConnection extends Connection {
         let self = this;
 
         this.socket.on('ipc-bridge-begin', () => {
+
+            self.socket.removeAllListeners();
+
             log.info('Remote DSP process connected');
 
             self.socket.on('disconnect', (reason: string) => {
@@ -399,8 +406,9 @@ export class IPCBridge extends EventEmitter {
     socket: SocketIOClient.Socket;
     name: string
     connected: boolean;
+    last_server_addr: string;
 
-    constructor(socket: SocketIOClient.Socket, name: string)
+    constructor(socket: SocketIOClient.Socket, addr: string, name: string)
     {
         super();
         this.socket = socket;
@@ -409,19 +417,29 @@ export class IPCBridge extends EventEmitter {
         let self = this;
 
         this.socket.on('connect', () => {
+            log.info("Connected");
             self.begin();
         });
 
         this.socket.on('disconnect', () => {
-            self.end();
+            self.reset();
         });
 
         this.socket.on('msg', (msg: string) => {
             
-            _log_msg(Message.parse(msg), true);
+            let msgobj = Message.parse(msg)
+            
+            _log_msg(msgobj, true);
 
-            if(self.ipc_socket)
-                self.ipc_socket.write(msg + '\0');
+            if(self.connected){
+                if(self.ipc_socket)
+                    self.ipc_socket.write(msg + '\0');
+            } else {
+                log.error("Not connected");
+                msgobj.err = "NOT CONNECTED";
+                msgobj.mode = MessageMode.RSP;
+                self.emit('msg', msg.toString())
+            }
         })
 
         this.socket.on('ipc-bridge-init', () => {
@@ -437,16 +455,16 @@ export class IPCBridge extends EventEmitter {
     {
         let self = this;
 
-        this.ipc_server = _make_pipe(this.name, (sock) => {
+        this.ipc_server = _make_pipe(this.name, (pipe) => {
 
-            this.ipc_socket = sock;
+            this.ipc_socket = pipe;
 
-            sock.pipe(split('\0')).on('data', data => {
+            pipe.pipe(split('\0')).on('data', data => {
                 _log_msg(Message.parse(data), false);
                 self.socket.emit('msg', data);
             });
 
-            sock.on('close', (err: Error) => {
+            pipe.on('close', (err: Error) => {
 
                 if (err)
                     log.warn('Local DSP process disconnected with error:  '
@@ -457,23 +475,36 @@ export class IPCBridge extends EventEmitter {
                 self.connected = false;
                 self.socket.close();
                 self.emit('close');
-                self.ipc_server.close();
+                self.reset();
             });
 
-            sock.on('error', (err: Error) => {
+            pipe.on('error', (err: Error) => {
                 log.error(err);
+                self.connected = false;
             });
 
-            self.ipc_socket = sock;
+            self.ipc_socket = pipe;
             self.connected = true;
             self.socket.emit('ipc-bridge-begin');
 
         });
     }
 
-    end()
+    reset()
     {
-        this.ipc_server.close();
+        log.warn("Connection lost, resetting.")
+
+        deleteLocalPipe(this.name);
+
+        if(this.ipc_server){
+            this.ipc_server.close();
+            this.ipc_server.removeAllListeners();
+        }
+
+        if(this.ipc_socket){
+            this.ipc_socket.end();
+            this.ipc_socket.removeAllListeners();
+        }
     }
 
 }
