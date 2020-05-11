@@ -67,27 +67,9 @@ function start(path: string) {
             exit(1);
         }
 
-        log.info("Port is now open");
-    });
-
-    p.on('error', err => {
-        log.error("Error on serial port: " + err.message);
-    });
-
-    p.on('close', err => {
-        log.info("Serial port closed");
-        exit(0);
-    });
-
-    p.on('readable', () => {
-
         let htrk = new LocalHeadtracker(p);
-        
-        let data = p.read();
 
-        for(let char of data)
-            htrk.readByte(<number> char);
-
+        log.info("Port is now open");
     });
 
     p.open();

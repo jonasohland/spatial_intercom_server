@@ -1,4 +1,7 @@
 import SerialPort from "serialport";
+import * as Logger from "./log";
+
+const log = Logger.get("SHK")
 
 enum si_gy_values {
     SI_GY_VALUES_MIN = 0,
@@ -39,17 +42,38 @@ abstract class SerialConnection {
     private _serial_sync_count: number;
     private _serial_current_value_type: si_gy_values;
     private _serial_buffer: Buffer;
+    private _serial_port: SerialPort;
 
     constructor(port: SerialPort) {
-        this._serial_buffer = Buffer.alloc(32);
+        
+        let self = this;
+        
+        this._serial_buffer = Buffer.alloc(Math.max(...si_serial_msg_lengths) + 5);
+        this._serial_port = port;
         this._serial_reset();
+
+        this._serial_port.on('readable', () => {
+            
+            let data = self._serial_port.read();
+
+             for(let char of data)
+                self.readByte(<number> char);
+        });
+
+        this._serial_port.on('error', err => {
+            log.error("Error on serial port: " + err.message);
+        });
+    
+        this._serial_port.on('close', err => {
+            log.info("Serial port closed");
+        });
+
+        setInterval(() => {
+            this.writeMessage(Buffer.from([0]), si_gy_values.SI_GY_ALIVE);
+        }, 1000);
     }
 
-    abstract handleQuat(): void;
-
-    private _serial_call_handler() {
-        console.log("Calling Handler for: " + si_gy_values[this._serial_current_value_type])
-    }
+    abstract handleMessage(value_ty: si_gy_values, buf: Buffer): void;
 
     readByte(next_byte: number) {
         switch(this._serial_state) {
@@ -62,6 +86,19 @@ abstract class SerialConnection {
             case si_gy_parser_state.SI_PARSER_READ_VALUE:
                 return this._serial_read_value(next_byte);
         }
+    }
+
+    protected writeMessage(buf: Buffer, ty: si_gy_values) {
+        
+        let out_b = Buffer.alloc(si_serial_msg_lengths[ty] + 5)
+        
+        for(let i = 0; i < 4; ++i)
+            out_b.writeUInt8(SI_SERIAL_SYNC_CODE, i);
+    
+        out_b.writeUInt8(ty, 4);
+        buf.copy(out_b, 5, 0);
+
+        this._serial_port.write(out_b);
     }
 
     private _serial_reset() {
@@ -96,7 +133,6 @@ abstract class SerialConnection {
         if (byte > si_gy_values.SI_GY_VALUES_MIN && byte < si_gy_values.SI_GY_VALUES_MAX) {
             this._serial_current_value_type  = <si_gy_values> byte;
             this._serial_state = si_gy_parser_state.SI_PARSER_READ_VALUE;
-            console.log("Value type is " + si_gy_values[this._serial_current_value_type]);
         }
         else
             this._serial_reset();
@@ -108,7 +144,10 @@ abstract class SerialConnection {
             this._serial_buffer.writeUInt8(byte, this._serial_sync_count++)//serial->buffer[serial->scount++] = dat;
         else {
             this._serial_buffer.writeUInt8(byte, this._serial_sync_count)
-            this._serial_call_handler();
+
+            let b = Buffer.alloc(si_serial_msg_lengths[this._serial_current_value_type]);
+            this._serial_buffer.copy(b, 0, 5);
+            this.handleMessage(this._serial_current_value_type, b);
             this._serial_reset();
         }
     }
@@ -120,7 +159,7 @@ export class LocalHeadtracker extends SerialConnection {
         super(serial);
     }
 
-    handleQuat(): void {
-        
+    handleMessage(ty: si_gy_values, buf: Buffer): void {
+        console.log(si_gy_values[ty]);
     }
 }

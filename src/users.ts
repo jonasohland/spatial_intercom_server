@@ -1,15 +1,10 @@
-import {throws} from 'assert';
 import EventEmitter from 'events';
-import {checkServerIdentity} from 'tls';
-import fclone from 'fclone';
 import * as Audio from './audio_devices';
-import * as DSP from './dsp';
 import {BasicSpatializer, BasicUserModule, BasicSpatializerModule, AdvancedSpatializerModule, SpatializationModule } from './dsp_modules';
 import * as Inputs from './inputs';
 import * as Instance from './instance';
 import * as Logger from './log';
 import { Headtracking } from './headtracking';
-import { IPCBridge } from './ipc';
 import * as IP from 'ip';
 
 const log = Logger.get('USR');
