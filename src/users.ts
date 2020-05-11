@@ -8,7 +8,7 @@ import {BasicSpatializer, BasicUserModule, BasicSpatializerModule, AdvancedSpati
 import * as Inputs from './inputs';
 import * as Instance from './instance';
 import * as Logger from './log';
-import { Headtracking, addrToString, stringToAddr } from './headtracker';
+import { Headtracking } from './headtracking';
 import { IPCBridge } from './ipc';
 import * as IP from 'ip';
 

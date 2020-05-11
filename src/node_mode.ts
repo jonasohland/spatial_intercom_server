@@ -1,45 +1,37 @@
-import * as IPC from './ipc'
-import * as configuration from './config'
-import * as discovery from './discovery'
 import * as mdns from 'dnssd'
-import io from 'socket.io-client'
 import * as mid from 'node-machine-id'
 import * as os from 'os';
+import io from 'socket.io-client'
 
-const local_addresses = <string[]> [];
+import * as discovery from './discovery'
+import * as IPC from './ipc'
+import * as server_config from './server_config'
 
+const local_addresses = <string[]>[];
 const ifaces = os.networkInterfaces();
-
-Object.keys(ifaces).forEach(function (ifname) {
-
-  var alias = 0;
-
-  ifaces[ifname].forEach(function (iface) {
-
-    if ('IPv4' != iface.family || iface.internal) 
-      return;
-
-    local_addresses.push(iface.address);
-
-    ++alias;
-  });
+Object.keys(ifaces).forEach(function(ifname) {
+    var alias = 0;
+    ifaces[ifname].forEach(function(iface) {
+        if ('IPv4' != iface.family || iface.internal) return;
+        local_addresses.push(iface.address);
+        ++alias;
+    });
 });
 
-export function run(options: any) {
-
-    configuration.loadConfigFile();
+export default function(options: any)
+{
+    server_config.loadServerConfigFile();
 
     let ipc_bridge: IPC.IPCBridge;
     let socket: SocketIOClient.Socket;
 
-    const config = configuration.merge(options);
+    const config  = server_config.merge(options);
     const browser = discovery.getServerBrowser(config.interface);
 
     browser.on('serviceUp', (service: mdns.Service) => {
-
         let serveraddr = `ws://${service.addresses[0]}:${service.port}`
 
-        socket = io(serveraddr, { reconnectionDelayMax: 1000 });
+        socket = io(serveraddr, { reconnectionDelayMax : 1000 });
 
         socket.on('__name', () => {
             let id = mid.machineIdSync();
@@ -47,7 +39,6 @@ export function run(options: any) {
         });
 
         ipc_bridge = new IPC.IPCBridge(socket, serveraddr, 'default');
-
     });
 
     browser.start();

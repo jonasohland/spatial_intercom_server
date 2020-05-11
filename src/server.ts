@@ -2,11 +2,9 @@ import { SpatialIntercomInstance } from './instance';
 import * as AudioDevices from './audio_devices'
 import * as mdns from 'dnssd';
 import io from 'socket.io'
-import { EventEmitter } from 'events';
-import * as Headtracking from './headtracker'
+import * as Headtracking from './headtracking'
 import * as discovery from './discovery'
 import * as Logger from './log'
-import { Message } from './ipc';
 import * as Inputs from './inputs';
 import { UsersManager } from './users';
 import express from 'express';
@@ -41,9 +39,11 @@ export class SpatialIntercomServer {
 
         this.app.use(express.static(`${__dirname}/../../interface/dist`));
 
-        this.app.listen(8090, () => {
-            log.info("Webserver running");
-        });
+        if(config.webserver) {
+            this.app.listen(8090, () => {
+                log.info("Webserver running");
+            });
+        }
         
         this.advertiser = discovery.getServerAdvertiser(config.interface);
         this.webinterface_advertiser = discovery.getWebinterfaceAdvertiser(config.web_interface);

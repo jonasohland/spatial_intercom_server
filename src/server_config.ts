@@ -11,14 +11,13 @@ const log = Logger.get('CFG');
 const _config_path = os.userInfo().homedir + '/.spatial_intercom';
 let _config_file: any = {};
 
-export function loadConfigFile() {
+export function loadServerConfigFile() {
 
     if (fs.existsSync(_config_path)) {
         log.info('Loading configuration file from ' + _config_path);
         _config_file = ini.parse(fs.readFileSync(_config_path).toString());
     }
 }
-
 
 function getNodeName(options: any)
 {
@@ -43,9 +42,14 @@ function parseWebserverOptions() {}
 
 export function merge(cmd_opts: commander.Command)
 {
-    let output:
-        { interface?: string, web_interface?: string, node_name?: string }
-    = {};
+    let output: {   
+        interface?: string, 
+        web_interface?: string, 
+        node_name?: string, 
+        webserver?: boolean, 
+        server_port?: number,
+        webserver_port?: number 
+    } = {};
 
     if (!_config_file.network) _config_file.network = {};
 
@@ -69,6 +73,16 @@ export function merge(cmd_opts: commander.Command)
                                    : getInterface(webif_opt, netifs);
 
     output.node_name = getNodeName(cmd_opts);
+    output.webserver = cmd_opts.webserver;
+
+    output.server_port = Number.parseInt(cmd_opts.port) || 
+                            Number.parseInt(_config_file.network.port) || 45545
+
+    output.webserver_port = Number.parseInt(cmd_opts.webserverPort) || 
+                            Number.parseInt(_config_file.network.webserver_port) || 80
+
+    // console.log(_config_file.network);
+    // console.log(output);
 
     return output;
 }

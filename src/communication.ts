@@ -1,7 +1,7 @@
 import * as net from 'net';
 import * as IPC from './ipc';
-import 'socket.io';
-import 'socket.io-client';
+import * as SocketIO from 'socket.io';
+import * as SocketIOClient from 'socket.io-client';
 import * as mdns from 'dnssd';
 import { EventEmitter } from 'events';
 
@@ -17,84 +17,27 @@ enum SIClientState {
     RECONNECTING
 };
 
-class SIServerWSClient extends EventEmitter {
+class SINodeWSConnection {
+    socket: SocketIO.Socket;
+}   
 
-    wsclient_sock: SocketIO.Socket;
-    state: SIClientState;
-    id: string;
-    name: string;
+class SIServerWSAdapter extends EventEmitter {
 
-    constructor(socket: SocketIO.Client) {
+    nodes: SINodeWSConnection[]
+    wsserver: SocketIO.Server;
 
+    constructor(config: any) {
         super();
-
-        this.state = SIClientState.IDENT_EXCHANGE;
-
-        this.wsclient_sock.on('ident_exchange', this.identExchangeHandler.bind(this));
-        this.wsclient_sock.on('dsp_attach', this.dspAttachHandler.bind(this));
-        this.wsclient_sock.on('dsp_detach', this.dspDetachHandler.bind(this));
-
-        this.wsclient_sock.on('msg', this.msgHandler.bind(this));
-
-        log.info("New Node connected, exchanging Identities");
-
-        this.wsclient_sock.emit("ident_exchange");
-    }
-
-    clientDisconnectHandler() {
-        log.warn("Client " + this.name + " disconnected");
-        this.state = SIClientState.RECONNECTING;
-    }
-
-    identExchangeHandler(id: string, name: string) {
-
-        this.name = name;
-        this.id = id;
-
-        log.info("Exchanged identities with " + name + ", ID: " + id);
-        log.info("Waiting for dsp_attach");
-
-        this.state = SIClientState.WAITING;
-
-        this.wsclient_sock.emit('ready');
-    }
-
-    dspAttachHandler() {
-        this.state = SIClientState.CONNECTED;
-        log.info("DSP attached on Node " + this.name);
-        this.emit("dsp_attached");
-    }
-
-    dspDetachHandler() {
-        this.state = SIClientState.WAITING;
-        log.warn("DSP detached on Node " + this.name);
-        this.emit("dsp_detached");
-    }
-
-    msgHandler(msg: string) {
-        
+        this.wsserver = SocketIO.listen(config.server_port)
     }
 }
 
-class SIServerWSServer extends EventEmitter {
+class SINodeWSAdapter extends EventEmitter {
 
-    wsserv: SocketIO.Server; 
-    advert: mdns.Advertisement;
+    wsclient: SocketIOClient.Socket;
 
-    waiting_clients: SIServerWSClient[];
-    clients: SIServerWSClient[];
-
-    constructor(srv: SocketIO.Server) {
-
+    constructor() {
         super();
-
-        this.wsserv.on('connection', () => {
-            
-        });
+        this.wsclient = SocketIOClient.connect("");
     }
-
-};
-
-class SINodeWSClient {}
-
-class SINodeWSServer {}
+}

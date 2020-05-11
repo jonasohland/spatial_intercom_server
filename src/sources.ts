@@ -1,4 +1,5 @@
 import { PortTypes } from './dsp';
+import { SourceSets } from './source_behaviours';
 
 export interface Source {
     a: number;
@@ -33,7 +34,6 @@ export class SourceParameterSet {
 
     a: number
     e: number
-
 }
 
 export class SoundSource {

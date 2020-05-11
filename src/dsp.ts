@@ -1,8 +1,6 @@
-import {EventEmitter} from 'events';
-
+import { EventEmitter } from 'events';
 import * as IPC from './ipc'
 import * as Logger from './log';
-import { isRegExp } from 'util';
 
 const log = Logger.get('DSP');
 

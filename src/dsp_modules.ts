@@ -148,27 +148,12 @@ export class AdvancedBinauralDecoder extends NativeNode {
 }
 
 export abstract class SpatializationModule extends Module {
-    abstract setAzm(azm: number) : void;
+    abstract setAzm(azm: number): void;
     abstract setElv(elv: number): void;
-    abstract setStWidth(stwidth: number) : void;
+    abstract setStWidth(stwidth: number): void;
 }
 
 export class BasicSpatializerModule extends SpatializationModule {
-
-    setAzm(azm: number): void {
-        if(this.processor)
-            this.processor.setAzimuthDeg(azm);
-    }
-
-    setElv(elv: number): void {
-        if(this.processor)
-            this.processor.setElevationDeg(elv);
-    }
-
-    setStWidth(stwidth: number): void {
-        if(this.processor)
-            this.processor.setStereoWidthDegs(stwidth);
-    }
 
     constructor(input: OwnedInput, user: User)
     {
@@ -185,7 +170,20 @@ export class BasicSpatializerModule extends SpatializationModule {
     outputConn: Connection;
     processor: BasicSpatializer;
 
-    
+    setAzm(azm: number): void
+    {
+        if (this.processor) this.processor.setAzimuthDeg(azm);
+    }
+
+    setElv(elv: number): void
+    {
+        if (this.processor) this.processor.setElevationDeg(elv);
+    }
+
+    setStWidth(stwidth: number): void
+    {
+        if (this.processor) this.processor.setStereoWidthDegs(stwidth);
+    }
 
     getProcessor()
     {
@@ -242,35 +240,40 @@ export class BasicSpatializerModule extends SpatializationModule {
 
 export class AdvancedSpatializerModule extends SpatializationModule {
 
-    setAzm(azm: number): void {
+    setAzm(azm: number): void
+    {
         this.cachedAzm = (azm / 360) * 2 * Math.PI;
         this.sendPosData();
     }
-    setElv(elv: number): void {
+    setElv(elv: number): void
+    {
         this.cachedElv = (elv / 360) * 2 * Math.PI;
         this.sendPosData();
     }
-    setStWidth(stwidth: number): void {
+    setStWidth(stwidth: number): void
+    {
         this.cachedStWidth = (stwidth / 360) * 2 * Math.PI;
         this.sendPosData();
     }
 
-    setReflections(reflections: number) {
+    setReflections(reflections: number)
+    {
 
-        if(this.processorR) {
+        if (this.processorR) {
 
             this.processorL.remote.set('reflections', 0);
             this.processorR.remote.set('reflections', 0);
-
-        } else
+        }
+        else
             this.processorL.remote.set('reflections', reflections);
     }
 
-    setRoomCharacter(character: number) {
-        
+    setRoomCharacter(character: number)
+    {
+
         this.processorL.remote.set('room_character', character);
 
-        if(this.processorR)
+        if (this.processorR)
             this.processorR.remote.set('room_character', character);
     }
 
@@ -291,8 +294,8 @@ export class AdvancedSpatializerModule extends SpatializationModule {
     processorL: AdvancedSpatializer;
     processorR: AdvancedSpatializer;
 
-    cachedElv: number = 0;
-    cachedAzm: number = 0;
+    cachedElv: number     = 0;
+    cachedAzm: number     = 0;
     cachedStWidth: number = 0;
 
     destroy(graph: Graph)
@@ -355,9 +358,12 @@ export class AdvancedSpatializerModule extends SpatializationModule {
         }
     }
 
-    sendPosData() {
+    sendPosData()
+    {
 
-        let azmL = (this.owned_input.format == 'stereo')? this.cachedAzm - (this.cachedStWidth / 2) : this.cachedAzm; 
+        let azmL = (this.owned_input.format == 'stereo')
+                       ? this.cachedAzm - (this.cachedStWidth / 2)
+                       : this.cachedAzm;
 
         let X = Math.cos(azmL) * Math.cos(this.cachedElv) * 0.15 + 0.5;
         let Y = Math.sin(azmL) * Math.cos(this.cachedElv) * 0.15 + 0.5;
@@ -365,9 +371,9 @@ export class AdvancedSpatializerModule extends SpatializationModule {
 
         console.log(X, Y, Z);
 
-        this.processorL.remote.set('xyz', { x: X, y: Y, z: Z });
+        this.processorL.remote.set('xyz', { x : X, y : Y, z : Z });
 
-        if(this.processorR) {
+        if (this.processorR) {
 
             let azmR = this.cachedAzm + (this.cachedStWidth / 2);
 
@@ -375,7 +381,7 @@ export class AdvancedSpatializerModule extends SpatializationModule {
             let Y2 = Math.sin(azmR) * Math.cos(this.cachedElv) * 0.15 + 0.5;
             let Z2 = Math.sin(this.cachedElv) * 0.15 + 0.5;
 
-            this.processorR.remote.set('xyz', { x: X2, y: Y2, z: Z2 });
+            this.processorR.remote.set('xyz', { x : X2, y : Y2, z : Z2 });
         }
     }
 }

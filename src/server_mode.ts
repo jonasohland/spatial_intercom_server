@@ -1,18 +1,7 @@
-import * as discovery from './discovery';
-import * as configuration from './config'
-import * as mdns from 'dnssd';
-import * as Headtracking from './headtracker'
-import { SpatialIntercomInstance } from './instance'
-import io from 'socket.io'
-
+import * as server_config from './server_config'
 import { SpatialIntercomServer } from './server'
 
-
-
-export function run(options: any) {
-
-    configuration.loadConfigFile();
-    const config = configuration.merge(options);
-
-    const server = new SpatialIntercomServer(config);
+export default function(options: any) {
+    server_config.loadServerConfigFile();
+    const server = new SpatialIntercomServer(server_config.merge(options));
 }

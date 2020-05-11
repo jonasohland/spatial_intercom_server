@@ -9,7 +9,7 @@
     "start": "npm run build && node ./dist/index.js"
   },
   "bin": {
-    "si-server": "bin/cli.js"
+    "si": "bin/cli.js"
   },
   "author": "Jonas Ohland",
   "license": "ISC",
@@ -22,9 +22,11 @@
     "@types/ip": "^1.1.0",
     "@types/lodash": "^4.14.149",
     "@types/node": "^12.12.20",
+    "@types/serialport": "^8.0.0",
     "@types/socket.io": "^2.1.4",
     "@types/socket.io-client": "^1.4.32",
     "@types/split2": "^2.1.6",
+    "@types/terminal-kit": "^1.28.2",
     "chalk": "^2.4.2",
     "commander": "^4.0.1",
     "dnssd": "^0.4.1",
@@ -35,8 +37,10 @@
     "is-ip": "^3.1.0",
     "node-machine-id": "^1.1.12",
     "osc-js": "^2.1.0",
+    "serialport": "^9.0.0",
     "socket.io": "^2.3.0",
     "split2": "^3.1.1",
+    "terminal-kit": "^1.35.2",
     "typescript": "^3.7.3",
     "winston": "^3.2.1"
   },
