@@ -20,7 +20,14 @@ enum si_gy_parser_state {
     SI_PARSER_FIND_SYNC = 1,
     SI_PARSER_SYNCING,
     SI_PARSER_READ_VALUE_TYPE,
+    SI_PARSER_MESSAGE_TYPE,
     SI_PARSER_READ_VALUE
+}
+
+enum si_gy_message_types {
+    SI_GY_GET = 1,
+    SI_GY_SET,
+    SI_GY_NOTIFY
 }
 
 const si_serial_msg_lengths = [ 
@@ -41,6 +48,7 @@ abstract class SerialConnection {
     private _serial_state: si_gy_parser_state = 0;
     private _serial_sync_count: number;
     private _serial_current_value_type: si_gy_values;
+    private _serial_current_msg_type: si_gy_message_types;
     private _serial_buffer: Buffer;
     private _serial_port: SerialPort;
 
@@ -67,13 +75,11 @@ abstract class SerialConnection {
         this._serial_port.on('close', err => {
             log.info("Serial port closed");
         });
-
-        setInterval(() => {
-            this.writeMessage(Buffer.from([0]), si_gy_values.SI_GY_ALIVE);
-        }, 1000);
     }
 
-    abstract handleMessage(value_ty: si_gy_values, buf: Buffer): void;
+    abstract onValueRequest(ty: si_gy_values): Buffer;
+    abstract onValueSet(ty: si_gy_values, data: Buffer): void;
+    abstract onNotify(ty: si_gy_values, data: Buffer): void;
 
     readByte(next_byte: number) {
         switch(this._serial_state) {
@@ -83,12 +89,14 @@ abstract class SerialConnection {
                 return this._serial_sync(next_byte);
             case si_gy_parser_state.SI_PARSER_READ_VALUE_TYPE:
                 return this._serial_read_valtype(next_byte);
+            case si_gy_parser_state.SI_PARSER_MESSAGE_TYPE:
+                return this._serial_read_msg_type(next_byte);
             case si_gy_parser_state.SI_PARSER_READ_VALUE:
                 return this._serial_read_value(next_byte);
         }
     }
 
-    protected writeMessage(buf: Buffer, ty: si_gy_values) {
+    private _serial_write_message(buf: Buffer, ty: si_gy_values, md: si_gy_message_types) {
         
         let out_b = Buffer.alloc(si_serial_msg_lengths[ty] + 5)
         
@@ -96,10 +104,17 @@ abstract class SerialConnection {
             out_b.writeUInt8(SI_SERIAL_SYNC_CODE, i);
     
         out_b.writeUInt8(ty, 4);
-        buf.copy(out_b, 5, 0);
+        out_b.writeUInt8(md, 5);
+        buf.copy(out_b, 6, 0);
 
         this._serial_port.write(out_b);
     }
+
+    private _serial_on_get_msg() {
+        this._serial_write_message(
+            this.onValueRequest(this._serial_current_value_type), 
+            this._serial_current_value_type, si_gy_message_types.SI_GY_SET);
+    }   
 
     private _serial_reset() {
         this._serial_state = si_gy_parser_state.SI_PARSER_FIND_SYNC;
@@ -132,10 +147,15 @@ abstract class SerialConnection {
     private _serial_read_valtype(byte: number) {
         if (byte > si_gy_values.SI_GY_VALUES_MIN && byte < si_gy_values.SI_GY_VALUES_MAX) {
             this._serial_current_value_type  = <si_gy_values> byte;
-            this._serial_state = si_gy_parser_state.SI_PARSER_READ_VALUE;
+            this._serial_state = si_gy_parser_state.SI_PARSER_MESSAGE_TYPE;
         }
         else
             this._serial_reset();
+    }
+
+    private _serial_read_msg_type(byte: number) {
+        this._serial_current_msg_type = <si_gy_message_types> byte;
+        this._serial_state = si_gy_parser_state.SI_PARSER_READ_VALUE
     }
 
     private _serial_read_value(byte: number) {
@@ -147,7 +167,18 @@ abstract class SerialConnection {
 
             let b = Buffer.alloc(si_serial_msg_lengths[this._serial_current_value_type]);
             this._serial_buffer.copy(b, 0, 5);
-            this.handleMessage(this._serial_current_value_type, b);
+            
+            switch(this._serial_current_msg_type) {
+                case si_gy_message_types.SI_GY_SET:
+                    this.onValueSet(this._serial_current_value_type, b);
+                    break;
+                case si_gy_message_types.SI_GY_NOTIFY:
+                    this.onNotify(this._serial_current_value_type, b);
+                    break;
+                case si_gy_message_types.SI_GY_GET:
+                    this._serial_on_get_msg();
+            }    
+        
             this._serial_reset();
         }
     }
