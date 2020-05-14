@@ -1,6 +1,7 @@
 import SerialPort from 'serialport';
+
+import {Headtracker} from './headtracker';
 import * as Logger from './log';
-import { Headtracker } from './headtracker';
 
 const log = Logger.get('SHK');
 
@@ -26,7 +27,7 @@ enum si_gy_parser_state {
 }
 
 enum si_gy_message_types {
-    SI_GY_MSG_TY_MIN = 1,
+    SI_GY_MSG_TY_MIN = 10,
     SI_GY_GET,
     SI_GY_SET,
     SI_GY_NOTIFY,
@@ -67,7 +68,7 @@ abstract class SerialConnection {
 
     private _serial_con_s: CON_STATE;
 
-    serial_init(port: SerialPort) 
+    serial_init(port: SerialPort)
     {
         let self = this;
 
@@ -78,6 +79,8 @@ abstract class SerialConnection {
 
         this._serial_port.on('readable', () => {
             let data = self._serial_port.read();
+            // process.stdout.write("data_in: ");
+            // console.log(data);
             for (let char of data) self.readByte(<number>char);
         });
 
@@ -237,10 +240,14 @@ abstract class SerialConnection {
     }
 }
 
-function applyMixins(derivedCtor: any, baseCtors: any[]) {
+function applyMixins(derivedCtor: any, baseCtors: any[])
+{
     baseCtors.forEach(baseCtor => {
         Object.getOwnPropertyNames(baseCtor.prototype).forEach(name => {
-            Object.defineProperty(derivedCtor.prototype, name, Object.getOwnPropertyDescriptor(baseCtor.prototype, name));
+            Object.defineProperty(
+                derivedCtor.prototype,
+                name,
+                Object.getOwnPropertyDescriptor(baseCtor.prototype, name));
         });
     });
 }
@@ -338,7 +345,7 @@ export class LocalHeadtracker {
 
                 log.info(`Received valid ${
                     si_gy_values[si_gy_values.SI_GY_HELLO]} message`);
-                    
+
                 this._con_state = CON_STATE.ONLINE;
                 this.setDefaults();
             }
@@ -350,8 +357,13 @@ export class LocalHeadtracker {
     setDefaults()
     {
         log.info('Setting Headtracker to default values');
-        this.serialSet(si_gy_values.SI_GY_ENABLE, Buffer.from([ 0 ]));
-        this.serialSet(si_gy_values.SI_GY_SRATE, Buffer.from([ 25 ]));
+
+        let buf = Buffer.alloc(1);
+
+        buf.writeUInt8(1, 0);
+        this.serialSet(si_gy_values.SI_GY_ENABLE, buf);
+        buf.writeUInt8(100, 0);
+        this.serialSet(si_gy_values.SI_GY_SRATE, buf);
     }
 
     onValueRequest(ty: si_gy_values): Buffer
@@ -359,11 +371,19 @@ export class LocalHeadtracker {
         return Buffer.alloc(32);
     }
 
+    qcount = 0;
+
     onValueSet(ty: si_gy_values, data: Buffer): void
     {
         switch (ty) {
             case si_gy_values.SI_GY_VERSION: return this._on_set_ver(data);
             case si_gy_values.SI_GY_HELLO: return this._on_set_hello(data);
+            case si_gy_values.SI_GY_QUATERNION:
+                break;
+            case si_gy_values.SI_GY_ENABLE:
+                break;
+            case si_gy_values.SI_GY_SRATE: 
+                break;
         }
     }
     onNotify(ty: si_gy_values, data: Buffer): void
@@ -373,5 +393,7 @@ export class LocalHeadtracker {
 }
 
 // Hacky version of multiple inheritance...
-export interface LocalHeadtracker extends Headtracker, SerialConnection {};
-applyMixins(LocalHeadtracker, [Headtracker, SerialConnection]);
+export interface LocalHeadtracker extends Headtracker, SerialConnection {
+}
+;
+applyMixins(LocalHeadtracker, [ Headtracker, SerialConnection ]);
