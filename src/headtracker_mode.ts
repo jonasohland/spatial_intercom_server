@@ -5,9 +5,12 @@ import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
 import { LocalHeadtracker } from './headtracker_serial';
+import usbDetect from 'usb-detection';
 
 const { cyan } = chalk;
 const log = Logger.get('HTK');
+
+const htrk_devices: LocalHeadtracker[] = [];
 
 async function findPort(index: number) {
     return SerialPort.list().then(ports => {
@@ -67,7 +70,7 @@ function start(path: string) {
             exit(1);
         }
 
-        let htrk = new LocalHeadtracker(p);
+        new LocalHeadtracker(p);
 
         log.info("Port is now open");
     });
@@ -82,8 +85,30 @@ export default async function(port: string, options: any) {
         return listPorts().then(exit);
 
     if(!port) {
-        console.log("Please select a serial port (↑↓, Enter to confirm): ")
-        return selectPort().then(start);
+
+        if(options.auto) {
+            
+            usbDetect.startMonitoring();
+    
+            usbDetect.on('add:6790:29987', device => {
+                console.log('found a headtracker!');
+                console.log(device);
+                setTimeout(() => {
+                    SerialPort.list().then(ports => {
+                        ports.forEach(p => console.log(p));
+                    })
+                }, 4000);
+            });
+
+            usbDetect.on('remove:6790:29987', device => {
+                console.log('headtracker removed');
+            });
+            return;
+
+        } else {
+            console.log("Please select a serial port (↑↓, Enter to confirm): ")
+            return selectPort().then(start);
+        }
     }
 
     let p_i = Number.parseInt(port);

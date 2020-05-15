@@ -42,6 +42,7 @@
     "split2": "^3.1.1",
     "terminal-kit": "^1.35.2",
     "typescript": "^3.7.3",
+    "usb-detection": "^4.9.0",
     "winston": "^3.2.1"
   },
   "prettier": {
