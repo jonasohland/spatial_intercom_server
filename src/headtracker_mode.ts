@@ -58,7 +58,7 @@ async function selectPort(): Promise<string> {
 function start(path: string) {
     
     log.info("Opening port " + path);
-    let p = new SerialPort(path, { autoOpen: false, baudRate: 9600 });
+    let p = new SerialPort(path, { autoOpen: false, baudRate: 115200 });
 
     p.on('open', err => {
 

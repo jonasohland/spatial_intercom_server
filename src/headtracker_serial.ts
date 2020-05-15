@@ -15,6 +15,7 @@ enum si_gy_values {
     SI_GY_FOUND,
     SI_GY_VERSION,
     SI_GY_HELLO,
+    SI_GY_RESET,
     SI_GY_VALUES_MAX
 }
 
@@ -44,14 +45,15 @@ enum CON_STATE {
 
 const si_serial_msg_lengths = [
     0,
-    16,    // Quaternion
-    1,     // Samplerate
-    1,     // alive
-    1,     // enable
-    1,     // gy connected
-    1,     // gy found
-    3,     // gy software version
-    5,     // "Hello" message
+    16, // Quaternion
+    1,  // Samplerate
+    1,  // alive
+    1,  // enable
+    1,  // gy connected
+    1,  // gy found
+    3,  // gy software version
+    5,  // "Hello" message
+    1,  // reset
     0
 ];
 
@@ -145,6 +147,8 @@ abstract class SerialConnection {
 
         buf.copy(out_b, 6, 0);
 
+        process.stdout.write("write: ")
+        console.log(out_b);
         this._serial_port.write(out_b);
     }
 
@@ -347,23 +351,30 @@ export class LocalHeadtracker {
                     si_gy_values[si_gy_values.SI_GY_HELLO]} message`);
 
                 this._con_state = CON_STATE.ONLINE;
-                this.setDefaults();
+                
+                setInterval(() => {
+                    this.setDefaults(<any> this.onoff);
+                    this.onoff = !this.onoff;
+                }, 3000, this);
             }
         }
     }
 
+    onoff = false;
+
     /* --------------------------------------------------------------------- */
 
-    setDefaults()
+    setDefaults(on: number)
     {
-        log.info('Setting Headtracker to default values');
+        log.info('Reset Headtracker');
 
         let buf = Buffer.alloc(1);
 
-        buf.writeUInt8(1, 0);
-        this.serialSet(si_gy_values.SI_GY_ENABLE, buf);
-        buf.writeUInt8(100, 0);
+        buf.writeUInt8(30, 0);
         this.serialSet(si_gy_values.SI_GY_SRATE, buf);
+
+        buf.writeUInt8(on, 0);
+        this.serialSet(si_gy_values.SI_GY_ENABLE, buf);
     }
 
     onValueRequest(ty: si_gy_values): Buffer
@@ -379,6 +390,7 @@ export class LocalHeadtracker {
             case si_gy_values.SI_GY_VERSION: return this._on_set_ver(data);
             case si_gy_values.SI_GY_HELLO: return this._on_set_hello(data);
             case si_gy_values.SI_GY_QUATERNION:
+                console.log("QUAT")
                 break;
             case si_gy_values.SI_GY_ENABLE:
                 break;
