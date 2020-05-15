@@ -2,6 +2,7 @@ import SerialPort from 'serialport';
 
 import {Headtracker} from './headtracker';
 import * as Logger from './log';
+import * as util from './util';
 
 const log = Logger.get('SHK');
 
@@ -45,15 +46,15 @@ enum CON_STATE {
 
 const si_serial_msg_lengths = [
     0,
-    16, // Quaternion
-    1,  // Samplerate
-    1,  // alive
-    1,  // enable
-    1,  // gy connected
-    1,  // gy found
-    3,  // gy software version
-    5,  // "Hello" message
-    1,  // reset
+    16,    // Quaternion
+    1,     // Samplerate
+    1,     // alive
+    1,     // enable
+    1,     // gy connected
+    1,     // gy found
+    3,     // gy software version
+    5,     // "Hello" message
+    1,     // reset
     0
 ];
 
@@ -147,7 +148,7 @@ abstract class SerialConnection {
 
         buf.copy(out_b, 6, 0);
 
-        process.stdout.write("write: ")
+        process.stdout.write('write: ')
         console.log(out_b);
         this._serial_port.write(out_b);
     }
@@ -244,168 +245,80 @@ abstract class SerialConnection {
     }
 }
 
-function applyMixins(derivedCtor: any, baseCtors: any[])
-{
-    baseCtors.forEach(baseCtor => {
-        Object.getOwnPropertyNames(baseCtor.prototype).forEach(name => {
-            Object.defineProperty(
-                derivedCtor.prototype,
-                name,
-                Object.getOwnPropertyDescriptor(baseCtor.prototype, name));
-        });
-    });
+interface HeadtrackerSerialReq {
+    resolve?: (ret: Buffer) => void;
+    nresolve?: () => void;
+    reject: (reason: string) => void;
+    vty: si_gy_values;
+    mty: si_gy_message_types;
 }
-
 
 export class LocalHeadtracker {
 
-    _con_state = CON_STATE.GET_VERSION;
-    _req_int: NodeJS.Timeout;
-    _req_tmt: number           = 200;
-    _req_max_retry_cnt: number = 10;
-    _req_retry_cnt: number     = 0;
+    _rqueue: HeadtrackerSerialReq[];
+
+    _req_current: HeadtrackerSerialReq;
+    _req_free: boolean;
 
     constructor(serial: SerialPort)
     {
         this.serial_init(serial);
-
-        // wait a few seconds for the atmega to boot
-        setTimeout(() => {
-            this._init_req(4000, 10);
-            this._start_getver();
-        }, 3000, this);
     }
 
-    _start_getver()
-    {
-        this._start_req(CON_STATE.GET_VERSION);
-        this.serialReq(si_gy_values.SI_GY_VERSION);
+    _set_value(ty: si_gy_values, cb: (ret: Buffer) => void) {
+        return new Promise((res, rej) => {
+            this._rqueue.push({
+                nresolve: res,
+                reject: rej,
+                vty: ty,
+                mty: si_gy_message_types.SI_GY_NOTIFY
+            });
+        });
     }
 
-    _start_init()
-    {
-        this._start_req(CON_STATE.INIT);
-        this.serialReq(si_gy_values.SI_GY_HELLO);
+    _get_value(ty: si_gy_values, cb: (ret: Buffer) => void) {
+        return new Promise((res, rej) => {
+            this._rqueue.push({
+                nresolve: res,
+                reject: rej,
+                vty: ty,
+                mty: si_gy_message_types.SI_GY_NOTIFY
+            });
+        });
     }
 
-    _init_req(tmt: number, max_tmt: number)
-    {
-        this._req_max_retry_cnt = max_tmt;
-        this._req_tmt           = tmt;
-        this._req_retry_cnt     = 0;
-    }
-
-    _start_req(st: CON_STATE)
-    {
-        this._con_state = st;
-        this._req_int
-            = setTimeout(this._on_req_timeout.bind(this), this._req_tmt);
-    }
-
-    _reset_req()
-    {
-        clearTimeout(this._req_int);
-    }
-
-    _on_req_timeout()
-    {
-        log.warn(`Request in state ${CON_STATE[this._con_state]} timed out`);
-
-        this._req_retry_cnt++;
-
-        switch (this._con_state) {
-            case CON_STATE.GET_VERSION: return this._start_getver();
-            case CON_STATE.INIT: this._start_init();
-            case CON_STATE.ONLINE: break;
-            case CON_STATE.LOST: break;
-            case CON_STATE.OFFLINE: break;
-        }
+    _notify(ty: si_gy_values): Promise<void> {
+        return new Promise((res, rej) => {
+            this._rqueue.push({
+                nresolve: res,
+                reject: rej,
+                vty: ty,
+                mty: si_gy_message_types.SI_GY_NOTIFY
+            });
+        });
     }
 
     /* --------------------------------------------------------------------- */
-
-    private _on_set_ver(data: Buffer)
-    {
-        if (this._con_state == CON_STATE.GET_VERSION) {
-            let vstr = `${data.readUInt8(0)}.${data.readUInt8(1)}.${
-                data.readUInt8(2)}`;
-
-            log.info('Headtracker software version: ' + vstr);
-
-            this._reset_req();
-            this._init_req(400, 10);
-            this._start_init();
-        }
-    }
-
-    private _on_set_hello(data: Buffer)
-    {
-        if (this._con_state = CON_STATE.INIT) {
-
-            let hello = data.toString();
-            this._reset_req();
-
-            if (hello == 'hello') {
-
-                log.info(`Received valid ${
-                    si_gy_values[si_gy_values.SI_GY_HELLO]} message`);
-
-                this._con_state = CON_STATE.ONLINE;
-                
-                setInterval(() => {
-                    this.setDefaults(<any> this.onoff);
-                    this.onoff = !this.onoff;
-                }, 3000, this);
-            }
-        }
-    }
-
-    onoff = false;
-
-    /* --------------------------------------------------------------------- */
-
-    setDefaults(on: number)
-    {
-        log.info('Reset Headtracker');
-
-        let buf = Buffer.alloc(1);
-
-        buf.writeUInt8(30, 0);
-        this.serialSet(si_gy_values.SI_GY_SRATE, buf);
-
-        buf.writeUInt8(on, 0);
-        this.serialSet(si_gy_values.SI_GY_ENABLE, buf);
-    }
 
     onValueRequest(ty: si_gy_values): Buffer
     {
         return Buffer.alloc(32);
     }
 
-    qcount = 0;
+    onValueSet(ty: si_gy_values, data: Buffer): void 
+    {
 
-    onValueSet(ty: si_gy_values, data: Buffer): void
-    {
-        switch (ty) {
-            case si_gy_values.SI_GY_VERSION: return this._on_set_ver(data);
-            case si_gy_values.SI_GY_HELLO: return this._on_set_hello(data);
-            case si_gy_values.SI_GY_QUATERNION:
-                console.log("QUAT")
-                break;
-            case si_gy_values.SI_GY_ENABLE:
-                break;
-            case si_gy_values.SI_GY_SRATE: 
-                break;
-        }
     }
-    onNotify(ty: si_gy_values, data: Buffer): void
+
+    onNotify(ty: si_gy_values, data: Buffer): void 
     {
-        console.log('Notified ' + si_gy_values[ty]);
+
     }
 }
 
 // Hacky version of multiple inheritance...
 export interface LocalHeadtracker extends Headtracker, SerialConnection {
 }
-;
-applyMixins(LocalHeadtracker, [ Headtracker, SerialConnection ]);
+
+// this is an offical workaround...
+util.applyMixins(LocalHeadtracker, [SerialConnection, Headtracker]);
