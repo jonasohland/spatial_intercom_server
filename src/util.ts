@@ -1,4 +1,5 @@
-
+import * as os from 'os';
+import * as cp from 'child_process';
 
 export function applyMixins(derivedCtor: any, baseCtors: any[])
 {
@@ -10,4 +11,11 @@ export function applyMixins(derivedCtor: any, baseCtors: any[])
                 Object.getOwnPropertyDescriptor(baseCtor.prototype, name));
         });
     });
+}
+
+export function openForUser(thing: string) {
+    if(os.type() == 'Windows_NT')
+        cp.spawn('start');
+    else if(os.type() == 'Darwin')
+        cp.spawn('open', [thing]);
 }

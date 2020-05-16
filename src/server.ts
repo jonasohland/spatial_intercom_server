@@ -8,6 +8,7 @@ import * as Logger from './log'
 import * as Inputs from './inputs';
 import { UsersManager } from './users';
 import express from 'express';
+import * as util from './util';
 
 const log = Logger.get('SRV');
 

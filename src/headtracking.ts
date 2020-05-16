@@ -93,11 +93,13 @@ export class Headtracking extends EventEmitter {
 
         let id = Number.parseInt(service.host.substr(8, 2));
 
+        console.log(service);
+
         let htrk = new NetworkHeadtracker(this.server,
                                    id,
                                    service.addresses[0],
-                                   11023,
-                                   0,
+                                   service.port,
+                                   Math.floor(Math.random() * 10000) + 5000,
                                    this.local_interface);
         htrk.start();
 

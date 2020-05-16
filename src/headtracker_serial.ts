@@ -33,6 +33,8 @@ enum si_gy_message_types {
     SI_GY_GET,
     SI_GY_SET,
     SI_GY_NOTIFY,
+    SI_GY_RESP,
+    SI_GY_ACK,
     SI_GY_MSG_TY_MAX
 }
 
@@ -69,8 +71,6 @@ abstract class SerialConnection {
     private _serial_buffer: Buffer;
     private _serial_port: SerialPort;
 
-    private _serial_con_s: CON_STATE;
-
     serial_init(port: SerialPort)
     {
         let self = this;
@@ -99,11 +99,14 @@ abstract class SerialConnection {
     abstract onValueRequest(ty: si_gy_values): Buffer;
     abstract onValueSet(ty: si_gy_values, data: Buffer): void;
     abstract onNotify(ty: si_gy_values, data: Buffer): void;
+    abstract onACK(ty: si_gy_values): void;
+    abstract onResponse(ty: si_gy_values, data: Buffer): void;
 
     serialNotify(val: si_gy_values)
     {
-        this._serial_write_message(
-            Buffer.alloc(1), val, si_gy_message_types.SI_GY_NOTIFY);
+        this._serial_write_message(Buffer.alloc(si_serial_msg_lengths[val], 0),
+                                   val,
+                                   si_gy_message_types.SI_GY_NOTIFY);
     }
 
     serialSet(val: si_gy_values, data: Buffer)
@@ -147,9 +150,6 @@ abstract class SerialConnection {
         out_b.writeUInt8(md, 5);
 
         buf.copy(out_b, 6, 0);
-
-        process.stdout.write('write: ')
-        console.log(out_b);
         this._serial_port.write(out_b);
     }
 
@@ -176,14 +176,12 @@ abstract class SerialConnection {
     private _serial_sync(byte: number)
     {
         if (this._serial_sync_count < 3) {
-
             if (byte == SI_SERIAL_SYNC_CODE)
                 this._serial_sync_count++;
             else
                 this._serial_reset();
         }
         else if (this._serial_sync_count == 3) {
-
             this._serial_state = si_gy_parser_state.SI_PARSER_READ_VALUE_TYPE;
             this._serial_sync_count = 0;
         }
@@ -237,7 +235,19 @@ abstract class SerialConnection {
                 case si_gy_message_types.SI_GY_NOTIFY:
                     this.onNotify(this._serial_current_value_type, b);
                     break;
-                case si_gy_message_types.SI_GY_GET: this._serial_on_get_msg();
+                case si_gy_message_types.SI_GY_GET:
+                    this._serial_on_get_msg();
+                    break;
+                case si_gy_message_types.SI_GY_ACK:
+                    this.onACK(this._serial_current_value_type);
+                    break;
+                case si_gy_message_types.SI_GY_RESP:
+                    this.onResponse(this._serial_current_value_type, b);
+                    break;
+                default:
+                    log.error('Unexpected message of type 0x'
+                              + this._serial_current_msg_type.toString(16)
+                                    .toUpperCase());
             }
 
             this._serial_reset();
@@ -245,57 +255,145 @@ abstract class SerialConnection {
     }
 }
 
-interface HeadtrackerSerialReq {
-    resolve?: (ret: Buffer) => void;
-    nresolve?: () => void;
+class HeadtrackerSerialReq {
+
+    resolve?: (ret: Buffer)  => void;
+    nresolve?: ()            => void;
     reject: (reason: string) => void;
+    buf?: Buffer;
+    tm?: NodeJS.Timeout;
     vty: si_gy_values;
     mty: si_gy_message_types;
+    tcnt: number = 0;
+
+    static newNotify(res: () => void, rej: () => void, val_ty: si_gy_values)
+    {
+        let tsk      = new HeadtrackerSerialReq();
+        tsk.mty      = si_gy_message_types.SI_GY_NOTIFY;
+        tsk.vty      = val_ty;
+        tsk.nresolve = res;
+        tsk.reject   = rej;
+        return tsk;
+    }
+
+    static newSet(res: () => void,
+                  rej: () => void,
+                  val_ty: si_gy_values,
+                  data: Buffer)
+    {
+        let tsk      = new HeadtrackerSerialReq();
+        tsk.mty      = si_gy_message_types.SI_GY_SET;
+        tsk.vty      = val_ty;
+        tsk.nresolve = res;
+        tsk.reject   = rej;
+        tsk.buf      = data;
+        return tsk;
+    }
+
+    static newReq(res: (ret: Buffer) => void,
+                  rej: ()            => void,
+                  val_ty: si_gy_values,
+                  args: Buffer)
+    {
+        let tsk     = new HeadtrackerSerialReq();
+        tsk.mty     = si_gy_message_types.SI_GY_GET;
+        tsk.vty     = val_ty;
+        tsk.resolve = res;
+        tsk.reject  = rej;
+        tsk.buf     = args;
+        return tsk;
+    }
 }
 
 export class LocalHeadtracker {
 
-    _rqueue: HeadtrackerSerialReq[];
-
+    _rqueue: HeadtrackerSerialReq[] = [];
     _req_current: HeadtrackerSerialReq;
     _req_free: boolean;
 
     constructor(serial: SerialPort)
     {
         this.serial_init(serial);
+
+        setTimeout(() => {
+            this._get_value(si_gy_values.SI_GY_HELLO).then((data) => {
+
+                if(data.toString() == 'hello')
+                    log.info("Got valid HELLO response from Headtracker");
+                else
+                    log.error("Got invalid HELLO response from Headtracker");
+
+                return this._get_value(si_gy_values.SI_GY_VERSION);
+            }).then((data) => {
+                log.info(`Headtracker software version: ${data.readUInt8(0)}.${data.readUInt8(1)}.${data.readUInt8(2)}`);
+            }); 
+        }, 1000, this);
     }
 
-    _set_value(ty: si_gy_values, cb: (ret: Buffer) => void) {
+    _set_value(ty: si_gy_values, data: Buffer): Promise<void>
+    {
         return new Promise((res, rej) => {
-            this._rqueue.push({
-                nresolve: res,
-                reject: rej,
-                vty: ty,
-                mty: si_gy_message_types.SI_GY_NOTIFY
-            });
+            this._new_request(HeadtrackerSerialReq.newSet(res, rej, ty, data));
         });
     }
 
-    _get_value(ty: si_gy_values, cb: (ret: Buffer) => void) {
+    _get_value(ty: si_gy_values, data?: Buffer): Promise<Buffer>
+    {
+        if (!data) data = Buffer.alloc(si_serial_msg_lengths[ty]).fill(13);
+
+        log.info("Send GET " + si_gy_values[ty]);
+
         return new Promise((res, rej) => {
-            this._rqueue.push({
-                nresolve: res,
-                reject: rej,
-                vty: ty,
-                mty: si_gy_message_types.SI_GY_NOTIFY
-            });
+            this._new_request(HeadtrackerSerialReq.newReq(res, rej, ty, data));
         });
     }
 
-    _notify(ty: si_gy_values): Promise<void> {
+    _notify(ty: si_gy_values): Promise<void>
+    {
         return new Promise((res, rej) => {
-            this._rqueue.push({
-                nresolve: res,
-                reject: rej,
-                vty: ty,
-                mty: si_gy_message_types.SI_GY_NOTIFY
-            });
+            this._new_request(HeadtrackerSerialReq.newNotify(res, rej, ty));
         });
+    }
+
+    _start_request(req: HeadtrackerSerialReq)
+    {
+        req.tm = setInterval(() => {
+            switch (req.mty) {
+                case si_gy_message_types.SI_GY_GET:
+                    this.serialReq(req.vty, req.buf);
+                    break;
+                case si_gy_message_types.SI_GY_SET:
+                    this.serialSet(req.vty, req.buf);
+                    break;
+                case si_gy_message_types.SI_GY_NOTIFY:
+                    this.serialNotify(req.vty);
+            }
+        }, 120, this);
+
+        this._req_current = req;
+    }
+
+    _new_request(req: HeadtrackerSerialReq)
+    {
+        if (!this._req_current)
+            this._start_request(req);
+        else
+            this._rqueue.push(req);
+    }
+
+    _end_request(data?: Buffer)
+    {
+        // prevent any more ACK matches for this request
+        clearInterval(this._req_current.tm);
+
+        if (data)
+            this._req_current.resolve(data);
+        else
+            this._req_current.nresolve();
+
+        this._req_current = null;
+
+        if (this._rqueue.length) this._start_request(this._rqueue.shift());
     }
 
     /* --------------------------------------------------------------------- */
@@ -305,14 +403,18 @@ export class LocalHeadtracker {
         return Buffer.alloc(32);
     }
 
-    onValueSet(ty: si_gy_values, data: Buffer): void 
-    {
+    onValueSet(ty: si_gy_values, data: Buffer): void {}
 
+    onNotify(ty: si_gy_values, data: Buffer): void {}
+
+    onACK(ty: si_gy_values)
+    {
+        if (this._req_current.vty == ty) this._end_request();
     }
 
-    onNotify(ty: si_gy_values, data: Buffer): void 
+    onResponse(ty: si_gy_values, data: Buffer)
     {
-
+        if (this._req_current.vty == ty) this._end_request(data);
     }
 }
 
@@ -321,4 +423,4 @@ export interface LocalHeadtracker extends Headtracker, SerialConnection {
 }
 
 // this is an offical workaround...
-util.applyMixins(LocalHeadtracker, [SerialConnection, Headtracker]);
+util.applyMixins(LocalHeadtracker, [ SerialConnection, Headtracker ]);
