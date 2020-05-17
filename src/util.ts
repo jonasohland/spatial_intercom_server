@@ -19,3 +19,7 @@ export function openForUser(thing: string) {
     else if(os.type() == 'Darwin')
         cp.spawn('open', [thing]);
 }
+
+export function bitValue(bit: number): number {
+    return (1 << (bit))
+}

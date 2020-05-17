@@ -1,10 +1,33 @@
+import {EventEmitter} from 'events';
 import SerialPort from 'serialport';
+import * as dgram from 'dgram';
+import * as osc from 'osc-min';
 
-import {Headtracker} from './headtracker';
+import {
+    Headtracker,
+    HeadtrackerConfigPacket,
+    HeadtrackerInvertation,
+    HeadtrackerNetworkSettings,
+    Quaternion
+} from './headtracker';
+
 import * as Logger from './log';
 import * as util from './util';
 
 const log = Logger.get('SHK');
+
+function invertationToBitmask(inv: HeadtrackerInvertation)
+{
+    let i = 0;
+
+    if (inv.x) i |= util.bitValue(3);
+
+    if (inv.y) i |= util.bitValue(4);
+
+    if (inv.z) i |= util.bitValue(5);
+
+    return i;
+}
 
 enum si_gy_values {
     SI_GY_VALUES_MIN = 0,
@@ -17,6 +40,8 @@ enum si_gy_values {
     SI_GY_VERSION,
     SI_GY_HELLO,
     SI_GY_RESET,
+    SI_GY_INV,
+    SI_GY_RESET_ORIENTATION,
     SI_GY_VALUES_MAX
 }
 
@@ -57,12 +82,14 @@ const si_serial_msg_lengths = [
     3,     // gy software version
     5,     // "Hello" message
     1,     // reset
+    1,     // invertation
+    1,     // reset orientation
     0
 ];
 
 const SI_SERIAL_SYNC_CODE = 0x23;
 
-abstract class SerialConnection {
+abstract class SerialConnection extends EventEmitter {
 
     private _serial_state: si_gy_parser_state = 0;
     private _serial_sync_count: number;
@@ -239,6 +266,7 @@ abstract class SerialConnection {
                     this._serial_on_get_msg();
                     break;
                 case si_gy_message_types.SI_GY_ACK:
+                    console.log(b);
                     this.onACK(this._serial_current_value_type);
                     break;
                 case si_gy_message_types.SI_GY_RESP:
@@ -305,29 +333,58 @@ class HeadtrackerSerialReq {
     }
 }
 
-export class LocalHeadtracker {
+export class SerialHeadtracker extends SerialConnection {
 
     _rqueue: HeadtrackerSerialReq[] = [];
     _req_current: HeadtrackerSerialReq;
     _req_free: boolean;
+    _watchdog: NodeJS.Timeout;
+    _is_ok: boolean = false;
 
     constructor(serial: SerialPort)
     {
+        super();
         this.serial_init(serial);
+    }
 
-        setTimeout(() => {
-            this._get_value(si_gy_values.SI_GY_HELLO).then((data) => {
-
-                if(data.toString() == 'hello')
-                    log.info("Got valid HELLO response from Headtracker");
+    async init()
+    {
+        return this._get_value(si_gy_values.SI_GY_HELLO)
+            .then((data) => {
+                if (data.toString() == 'hello')
+                    log.info('Got valid HELLO response from Headtracker');
                 else
-                    log.error("Got invalid HELLO response from Headtracker");
+                    log.error('Got invalid HELLO response from Headtracker');
 
                 return this._get_value(si_gy_values.SI_GY_VERSION);
-            }).then((data) => {
-                log.info(`Headtracker software version: ${data.readUInt8(0)}.${data.readUInt8(1)}.${data.readUInt8(2)}`);
-            }); 
-        }, 1000, this);
+            })
+            .then((data) => {
+                log.info(`Headtracker software version: ${data.readUInt8(0)}.${
+                    data.readUInt8(1)}.${data.readUInt8(2)}`);
+                this._watchdog = setInterval(() => {
+                    this._notify(si_gy_values.SI_GY_ALIVE)
+                        .then(() => {
+                            this._is_ok = true;
+                        })
+                        .catch(err => {
+                            log.warn('Lost connection to Headtracker');
+                            this._is_ok = false;
+                        });
+                }, 2000, this);
+            });
+    }
+
+    destroy()
+    {
+        clearInterval(this._watchdog);
+
+        while (this._rqueue.length)
+            this._rqueue.shift().reject('Instance destroyed');
+    }
+
+    isOnline()
+    {
+        return this._is_ok;
     }
 
     _set_value(ty: si_gy_values, data: Buffer): Promise<void>
@@ -341,7 +398,7 @@ export class LocalHeadtracker {
     {
         if (!data) data = Buffer.alloc(si_serial_msg_lengths[ty]).fill(13);
 
-        log.info("Send GET " + si_gy_values[ty]);
+        log.info('Send GET ' + si_gy_values[ty]);
 
         return new Promise((res, rej) => {
             this._new_request(HeadtrackerSerialReq.newReq(res, rej, ty, data));
@@ -367,7 +424,11 @@ export class LocalHeadtracker {
                     break;
                 case si_gy_message_types.SI_GY_NOTIFY:
                     this.serialNotify(req.vty);
+                    break;
             }
+
+            req.tcnt++;
+            if (req.tcnt > 40) req.reject('Timeout');
         }, 120, this);
 
         this._req_current = req;
@@ -403,24 +464,142 @@ export class LocalHeadtracker {
         return Buffer.alloc(32);
     }
 
-    onValueSet(ty: si_gy_values, data: Buffer): void {}
+    onValueSet(ty: si_gy_values, data: Buffer): void
+    {
+        if (ty == si_gy_values.SI_GY_QUATERNION)
+            this.emit('quat', Quaternion.fromBuffer(data, 0));
+    }
 
-    onNotify(ty: si_gy_values, data: Buffer): void {}
+    onNotify(ty: si_gy_values, data: Buffer): void
+    {
+        console.log('NOTIFY: ' + si_gy_values[ty]);
+    }
 
     onACK(ty: si_gy_values)
     {
-        if (this._req_current.vty == ty) this._end_request();
+        if (this._req_current && this._req_current.vty == ty)
+            this._end_request();
     }
 
     onResponse(ty: si_gy_values, data: Buffer)
     {
-        if (this._req_current.vty == ty) this._end_request(data);
+        if (this._req_current && this._req_current.vty == ty)
+            this._end_request(data);
     }
 }
 
-// Hacky version of multiple inheritance...
-export interface LocalHeadtracker extends Headtracker, SerialConnection {
-}
+export class LocalHeadtracker extends Headtracker {
 
-// this is an offical workaround...
-util.applyMixins(LocalHeadtracker, [ SerialConnection, Headtracker ]);
+    shtrk: SerialHeadtracker;
+    socket: dgram.Socket;
+
+    constructor(port: SerialPort)
+    {
+        super();
+        this.shtrk = new SerialHeadtracker(port);
+
+        this.remote.conf = new HeadtrackerConfigPacket();
+
+        this.shtrk.init().then(() => {
+            this.emit('update');
+        });
+
+        this.shtrk.on('quat', (q: Quaternion) => {
+            let e = q.toEuler();
+
+            let valid = (num: number) => (num > -1) && (num < 1)
+            
+            if(!valid(q.w) || !valid(q.x) || !valid(q.y) || !valid(q.z))
+                return;
+
+            // console.log(`${q.w.toFixed(1)} ${q.x.toFixed(1)} ${q.y.toFixed(1)} ${q.z.toFixed(1)}`);
+
+            console.log(`Quaternion ${(e.yaw * 180 / Math.PI).toFixed(1)} ${
+                (e.pitch * 180 / Math.PI).toFixed(1)} ${
+                (e.roll * 180 / Math.PI).toFixed(1)}`);
+
+            this.socket.send(osc.toBuffer({
+                oscType : "bundle",
+                elements : [{
+                    oscType: "message",
+                    address: "/SceneRotator/qw",
+                    args: [{
+                        type: "float",
+                        value : q.w
+                    }]
+                }, {
+                    oscType: "message",
+                    address: "/SceneRotator/qx",
+                    args: [{
+                        type: "float",
+                        value : q.x
+                    }]
+                },{
+                    oscType: "message",
+                    address: "/SceneRotator/qy",
+                    args: [{
+                        type: "float",
+                        value : q.y
+                    }]
+                },{
+                    oscType: "message",
+                    address: "/SceneRotator/qz",
+                    args: [{
+                        type: "float",
+                        value : q.z
+                    }]
+                }]
+            }), 8886, "127.0.0.1");
+        });
+
+        this.socket = dgram.createSocket('udp4');
+    }
+
+    setSamplerate(sr: number): void
+    {
+        console.log('set srate' + sr);
+        this.shtrk._set_value(si_gy_values.SI_GY_SRATE, Buffer.alloc(1, sr));
+    }
+    enableTx(): void
+    {
+        this.shtrk._set_value(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 1));
+    }
+    disableTx(): void
+    {
+        this.shtrk._set_value(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 0));
+    }
+    save(): void
+    {
+        console.log('Would save locally here');
+    }
+    reboot():
+        void{ this.shtrk._get_value(si_gy_values.SI_GY_RESET).then(err => {
+            this.shtrk.destroy();
+            this.shtrk.init();
+        }) } setInvertation(inv: HeadtrackerInvertation): void
+    {
+        this.shtrk._set_value(
+            si_gy_values.SI_GY_INV, Buffer.alloc(1, invertationToBitmask(inv)));
+    }
+    resetOrientation(): void
+    {
+        this.shtrk._set_value(
+            si_gy_values.SI_GY_RESET_ORIENTATION, Buffer.alloc(1, 1));
+    }
+    applyNetworkSettings(settings: HeadtrackerNetworkSettings): void
+    {
+        log.error('Cannot set network settings on serial headtracker');
+    }
+    destroy()
+    {
+        this.shtrk.destroy();
+    }
+    isOnline()
+    {
+        return this.shtrk.isOnline();
+    }
+    setStreamDest(addr: string, port: number)
+    {
+        log.error('Cannot set stream destination on serial headtracker');
+    }
+}

@@ -3,7 +3,7 @@ import dnssd from 'dnssd';
 import EventEmitter from 'events';
 import * as Logger from './log';
 
-import { NetworkHeadtracker  } from './headtracker_network'
+import { NetworkHeadtracker } from './headtracker_network'
 
 import { Headtracker, 
         HeadtrackerInvertation, 
@@ -103,7 +103,12 @@ export class Headtracking extends EventEmitter {
                                    this.local_interface);
         htrk.start();
 
-        htrk.on('update', this.updateRemote.bind(this));
+        this.addHeadtracker(htrk, id, service.addresses[0]);
+    }
+
+    addHeadtracker(trk: Headtracker, id: number, address: string) {
+
+        trk.on('update', this.updateRemote.bind(this));
 
         let dup = this.trackers.find(trk => trk.remote.id == id)
 
@@ -113,9 +118,10 @@ export class Headtracking extends EventEmitter {
             this.trackers.splice(this.trackers.indexOf(dup), 1);
         }
 
-        this.trackers.push(htrk);
+        this.trackers.push(trk);
 
-        this.server.emit('htrk.connected', id, service.addresses[0])
+        log.info("Add Headtracker at " + address);
+        this.server.emit('htrk.connected', id, address);
     }
 
     serviceRemoved(service: dnssd.Service) {}
@@ -161,6 +167,8 @@ export class Headtracking extends EventEmitter {
             })
             .filter(v => v != null);
         // clang-format on
+
+        console.log(tracker_update);
 
         if (socket)
             socket.emit('htrk.update', tracker_update);

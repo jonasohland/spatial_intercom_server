@@ -68,7 +68,7 @@ export function addrToString(addr: number)
         v.getUint8(0)}`;
 }
 
-class EulerAngles {
+export class EulerAngles {
     constructor(y: number, p: number, r: number)
     {
         this.yaw   = y;
@@ -100,7 +100,8 @@ class EulerAngles {
     }
 }
 
-class Quaternion {
+export class Quaternion {
+
     w: number;
     x: number;
     y: number;
@@ -112,6 +113,15 @@ class Quaternion {
         this.x = x;
         this.y = y;
         this.z = z;
+    }
+
+    static fromBuffer(buffer: Buffer, offset: number)
+    {
+        console.log(buffer);
+        return new Quaternion(buffer.readFloatLE(offset),
+                              buffer.readFloatLE(offset + 4),
+                              buffer.readFloatLE(offset + 8),
+                              buffer.readFloatLE(offset + 12));
     }
 
     toEuler(): EulerAngles
@@ -319,7 +329,7 @@ export abstract class Headtracker extends EventEmitter {
     local: { conf?: HeadtrackerConfigPacket; port?: number; netif?: string; }
     = {};
 
-    abstract setSamplerate(sr: number): void; 
+    abstract setSamplerate(sr: number): void;
     abstract enableTx(): void;
     abstract disableTx(): void;
     abstract save(): void;

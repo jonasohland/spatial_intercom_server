@@ -4,13 +4,14 @@ import * as Logger from './log';
 import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
-import { LocalHeadtracker } from './headtracker_serial';
+import { SerialHeadtracker, LocalHeadtracker } from './headtracker_serial';
 import usbDetect from 'usb-detection';
 
 const { cyan } = chalk;
 const log = Logger.get('HTK');
+import io from 'socket.io';
 
-const htrk_devices: LocalHeadtracker[] = [];
+const htrk_devices: SerialHeadtracker[] = [];
 
 async function findPort(index: number) {
     return SerialPort.list().then(ports => {
@@ -59,6 +60,9 @@ async function selectPort(): Promise<string> {
 }
 
 function start(path: string) {
+
+    let wss = io(45040);
+    let headtracking = new Headtracking(8887, wss);
     
     log.info("Opening port " + path);
     let p = new SerialPort(path, { autoOpen: false, baudRate: 115200 });
@@ -70,7 +74,7 @@ function start(path: string) {
             exit(1);
         }
 
-        new LocalHeadtracker(p);
+        headtracking.addHeadtracker(new LocalHeadtracker(p), 99, "local");
 
         log.info("Port is now open");
     });
