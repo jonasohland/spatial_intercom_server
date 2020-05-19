@@ -124,6 +124,16 @@ export class Quaternion {
                               buffer.readFloatLE(offset + 12));
     }
 
+    static fromInt16Buffer(buffer: Buffer, offset: number)
+    {
+        let iw = buffer.readInt16LE(offset);
+        let ix = buffer.readInt16LE(offset + 2);
+        let iy = buffer.readInt16LE(offset + 4);
+        let iz = buffer.readInt16LE(offset + 6);
+
+        return new Quaternion(iw / 16384, ix / 16384, iy / 16384, iz / 16384);
+    }
+
     toEuler(): EulerAngles
     {
         let euler = new EulerAngles(0, 0, 0);

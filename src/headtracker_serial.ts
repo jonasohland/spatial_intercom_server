@@ -1,7 +1,12 @@
-import {EventEmitter} from 'events';
-import SerialPort from 'serialport';
+import * as cp from 'child_process';
 import * as dgram from 'dgram';
+import {EventEmitter} from 'events';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as osc from 'osc-min';
+import * as path from 'path';
+import * as semver from 'semver';
+import SerialPort from 'serialport';
 
 import {
     Headtracker,
@@ -10,20 +15,182 @@ import {
     HeadtrackerNetworkSettings,
     Quaternion
 } from './headtracker';
-
 import * as Logger from './log';
 import * as util from './util';
+import { rejects } from 'assert';
 
 const log = Logger.get('SHK');
+
+interface HeadtrackerFirmware {
+    base_path: string;
+    checksum?: string;
+    version: string;
+}
+
+class FirmwareManager {
+
+    firmwares: HeadtrackerFirmware[];
+
+    async validateFirmware(fw: HeadtrackerFirmware) {}
+
+    async initialize()
+    {
+        let firmwares_base_path
+            = path.resolve(__dirname, '../bin/headtracker_firmware');
+
+        return new Promise((mres, mrej) => {
+        // check for dirs containing a valid "version" file (it was late....)
+        fs.readdir(
+            firmwares_base_path,
+            (err, files) => {
+                if(err)
+                    mrej();
+                Promise
+                    .all(files.map(async(file: string):
+                                       Promise<string> => {
+                                           return new Promise((res, rej) => {
+                                               file = firmwares_base_path + '/'
+                                                      + file;
+                                                log.info("Check firmware: " + file);
+                                               fs.lstat(file, (err, stats) => {
+                                                   if (stats.isDirectory())
+                                                       res(file)
+                                                    else res('');
+                                               });
+                                           })
+
+                                       }))
+                    .then(dirs => {
+                        dirs = dirs.filter(dir => dir != '');
+                        return Promise.all(dirs.map(async (dir): Promise<string[]> => { return new Promise(
+                                    (res, rej) => {
+                                        fs.readdir(dir, (err, fmfiles) => {
+                                        for (let f of fmfiles) {
+                                            if (f == 'version') {
+                                                log.info("Check version file " + dir + '/' + f);
+                                                return fs.readFile(
+                                                    dir + '/' + f,
+                                                    (err, data) => {
+                                                        if(err) {
+                                                            res([]);
+                                                        }
+                                                        let vstring
+                                                            = data.toString().trim();
+                                                        if (semver.valid(
+                                                                vstring))
+                                                            return res([
+                                                                dir,
+                                                                vstring
+                                                            ]);
+                                                        else res([]);
+                                                    })
+                                            }
+                                        }
+                                        res([]);
+                                    }) }) }))
+                    })
+                    .then(dirs => {
+                        this.firmwares = dirs.filter(d => d.length == 2).map(d => {
+                            return {
+                                base_path: d[0], version: d[1]
+                            }
+                        }).sort((fm_lhs, fm_rhs) => semver.compare(fm_lhs.version, fm_rhs.version));
+                        mres();
+                    })
+                    .catch(err => {
+                        log.error('Could not fetch firmares');
+                        mrej();
+                    }) });
+                });
+    }
+
+    getLatest(): HeadtrackerFirmware {
+        return (this.firmwares.length) ? this.firmwares[this.firmwares.length - 1]: null;
+    }
+}
+
+class AVRDUDEProgrammer {
+
+    private _avrdude_executable: string;
+    private _avrdude_conf_arg: string;
+
+    constructor()
+    {
+        if (os.type() == 'Darwin') {
+            this._avrdude_executable
+                = path.resolve(__dirname, '../bin/avrdude/Darwin/avrdude');
+            this._avrdude_conf_arg
+                = '-C '
+                  + path.resolve(
+                      __dirname, '../bin/avrdude/Darwin/avrdude.conf');
+        }
+        else if (os.type() == 'Windows_NT') {
+            this._avrdude_executable = path.resolve(
+                __dirname, '../bin/avrdude/Windows_NT/avrdude.exe');
+            this._avrdude_conf_arg
+                = '-C '
+                  + path.resolve(
+                      __dirname, '../bin/avrdude/Windows_NT/avrdude.conf');
+        }
+        else {
+            this._avrdude_executable = 'avrdude';
+        }
+
+        this.isInstalled()
+            .then(is => {
+                log.info('AVRDUDE found');
+            })
+            .catch(err => {
+                log.warn(
+                    'AVRDUDE not found. Will not be able to flash new firmeware to the Headtracker.');
+            })
+    }
+
+    async isInstalled(): Promise<boolean>
+    {
+        return new Promise((res, rej) => {
+            cp.execFile(
+                this._avrdude_executable, [ '-?' ], (err, stdout, stderr) => {
+                    if (err) return rej();
+                    let lines = stderr.split('\n');
+                    log.info('Found AVRDUDE version '
+                             + lines[lines.length - 2].split(' ')[2]);
+                    res(true);
+                });
+        })
+    }
+
+    async flashFirmware(firmware: HeadtrackerFirmware, port: string) {
+        
+        let args = [];
+
+        args.push("-p");
+        args.push("atmega328p")
+        args.push("-c")
+        args.push("arduino")
+        args.push("-P")
+        args.push(port)
+        args.push("-b")
+        args.push("57600")
+        args.push("-D")
+        args.push("-U")
+        args.push(`flash:w:firmware.hex:i`);
+
+        cp.execFile(this._avrdude_executable, args, { cwd: firmware.base_path }, (err, stdout, stderr) => {
+            if(err)
+                console.log(err);
+
+            console.log("flash complete");
+        })
+    }
+}
 
 function invertationToBitmask(inv: HeadtrackerInvertation)
 {
     let i = 0;
 
     if (inv.x) i |= util.bitValue(3);
-
     if (inv.y) i |= util.bitValue(4);
-
     if (inv.z) i |= util.bitValue(5);
 
     return i;
@@ -42,6 +209,7 @@ enum si_gy_values {
     SI_GY_RESET,
     SI_GY_INV,
     SI_GY_RESET_ORIENTATION,
+    SI_GY_INT_COUNT,
     SI_GY_VALUES_MAX
 }
 
@@ -73,17 +241,18 @@ enum CON_STATE {
 
 const si_serial_msg_lengths = [
     0,
-    16,    // Quaternion
-    1,     // Samplerate
-    1,     // alive
-    1,     // enable
-    1,     // gy connected
-    1,     // gy found
-    3,     // gy software version
-    5,     // "Hello" message
-    1,     // reset
-    1,     // invertation
-    1,     // reset orientation
+    8,    // Quaternion
+    1,    // Samplerate
+    1,    // alive
+    1,    // enable
+    1,    // gy connected
+    1,    // gy found
+    3,    // gy software version
+    5,    // "Hello" message
+    1,    // reset
+    1,    // invertation
+    1,    // reset orientation
+    8,    // interrupt/read counts
     0
 ];
 
@@ -100,6 +269,8 @@ abstract class SerialConnection extends EventEmitter {
 
     serial_init(port: SerialPort)
     {
+        let avrdude = new AVRDUDEProgrammer();
+
         let self = this;
 
         this._serial_buffer
@@ -349,20 +520,26 @@ export class SerialHeadtracker extends SerialConnection {
 
     async init()
     {
-        return this._get_value(si_gy_values.SI_GY_HELLO)
+        return this.getValue(si_gy_values.SI_GY_HELLO)
             .then((data) => {
                 if (data.toString() == 'hello')
                     log.info('Got valid HELLO response from Headtracker');
                 else
                     log.error('Got invalid HELLO response from Headtracker');
 
-                return this._get_value(si_gy_values.SI_GY_VERSION);
+                return this.getValue(si_gy_values.SI_GY_VERSION);
             })
             .then((data) => {
                 log.info(`Headtracker software version: ${data.readUInt8(0)}.${
                     data.readUInt8(1)}.${data.readUInt8(2)}`);
                 this._watchdog = setInterval(() => {
-                    this._notify(si_gy_values.SI_GY_ALIVE)
+                    this.getValue(si_gy_values.SI_GY_INT_COUNT)
+                        .then((data) => {
+                            console.log(`Interrupts: ${
+                                data.readUInt32LE(
+                                    0)} read ops: ${data.readUInt32LE(4)}`);
+                        });
+                    this.notify(si_gy_values.SI_GY_ALIVE)
                         .then(() => {
                             this._is_ok = true;
                         })
@@ -387,14 +564,14 @@ export class SerialHeadtracker extends SerialConnection {
         return this._is_ok;
     }
 
-    _set_value(ty: si_gy_values, data: Buffer): Promise<void>
+    setValue(ty: si_gy_values, data: Buffer): Promise<void>
     {
         return new Promise((res, rej) => {
             this._new_request(HeadtrackerSerialReq.newSet(res, rej, ty, data));
         });
     }
 
-    _get_value(ty: si_gy_values, data?: Buffer): Promise<Buffer>
+    getValue(ty: si_gy_values, data?: Buffer): Promise<Buffer>
     {
         if (!data) data = Buffer.alloc(si_serial_msg_lengths[ty]).fill(13);
 
@@ -405,7 +582,7 @@ export class SerialHeadtracker extends SerialConnection {
         });
     }
 
-    _notify(ty: si_gy_values): Promise<void>
+    notify(ty: si_gy_values): Promise<void>
     {
         return new Promise((res, rej) => {
             this._new_request(HeadtrackerSerialReq.newNotify(res, rej, ty));
@@ -414,7 +591,7 @@ export class SerialHeadtracker extends SerialConnection {
 
     _start_request(req: HeadtrackerSerialReq)
     {
-        req.tm = setInterval(() => {
+        let reqfn = () => {
             switch (req.mty) {
                 case si_gy_message_types.SI_GY_GET:
                     this.serialReq(req.vty, req.buf);
@@ -429,8 +606,10 @@ export class SerialHeadtracker extends SerialConnection {
 
             req.tcnt++;
             if (req.tcnt > 40) req.reject('Timeout');
-        }, 120, this);
+        };
 
+        req.tm = setInterval(reqfn, 120, this);
+        process.nextTick(reqfn);
         this._req_current = req;
     }
 
@@ -444,7 +623,6 @@ export class SerialHeadtracker extends SerialConnection {
 
     _end_request(data?: Buffer)
     {
-        // prevent any more ACK matches for this request
         clearInterval(this._req_current.tm);
 
         if (data)
@@ -467,7 +645,7 @@ export class SerialHeadtracker extends SerialConnection {
     onValueSet(ty: si_gy_values, data: Buffer): void
     {
         if (ty == si_gy_values.SI_GY_QUATERNION)
-            this.emit('quat', Quaternion.fromBuffer(data, 0));
+            this.emit('quat', Quaternion.fromInt16Buffer(data, 0));
     }
 
     onNotify(ty: si_gy_values, data: Buffer): void
@@ -507,49 +685,40 @@ export class LocalHeadtracker extends Headtracker {
         this.shtrk.on('quat', (q: Quaternion) => {
             let e = q.toEuler();
 
-            let valid = (num: number) => (num > -1) && (num < 1)
-            
-            if(!valid(q.w) || !valid(q.x) || !valid(q.y) || !valid(q.z))
-                return;
-
-            // console.log(`${q.w.toFixed(1)} ${q.x.toFixed(1)} ${q.y.toFixed(1)} ${q.z.toFixed(1)}`);
+            // console.log(`${q.w.toFixed(1)} ${q.x.toFixed(1)}
+            // ${q.y.toFixed(1)} ${q.z.toFixed(1)}`);
 
             console.log(`Quaternion ${(e.yaw * 180 / Math.PI).toFixed(1)} ${
                 (e.pitch * 180 / Math.PI).toFixed(1)} ${
                 (e.roll * 180 / Math.PI).toFixed(1)}`);
 
             this.socket.send(osc.toBuffer({
-                oscType : "bundle",
-                elements : [{
-                    oscType: "message",
-                    address: "/SceneRotator/qw",
-                    args: [{
-                        type: "float",
-                        value : q.w
-                    }]
-                }, {
-                    oscType: "message",
-                    address: "/SceneRotator/qx",
-                    args: [{
-                        type: "float",
-                        value : q.x
-                    }]
-                },{
-                    oscType: "message",
-                    address: "/SceneRotator/qy",
-                    args: [{
-                        type: "float",
-                        value : q.y
-                    }]
-                },{
-                    oscType: "message",
-                    address: "/SceneRotator/qz",
-                    args: [{
-                        type: "float",
-                        value : q.z
-                    }]
-                }]
-            }), 8886, "127.0.0.1");
+                oscType : 'bundle',
+                elements : [
+                    {
+                        oscType : 'message',
+                        address : '/SceneRotator/qw',
+                        args : [ { type : 'float', value : q.w } ]
+                    },
+                    {
+                        oscType : 'message',
+                        address : '/SceneRotator/qx',
+                        args : [ { type : 'float', value : q.x } ]
+                    },
+                    {
+                        oscType : 'message',
+                        address : '/SceneRotator/qy',
+                        args : [ { type : 'float', value : q.y } ]
+                    },
+                    {
+                        oscType : 'message',
+                        address : '/SceneRotator/qz',
+                        args : [ { type : 'float', value : q.z } ]
+                    }
+                ]
+            }),
+                8886,
+                '127.0.0.1');
         });
 
         this.socket = dgram.createSocket('udp4');
@@ -558,32 +727,32 @@ export class LocalHeadtracker extends Headtracker {
     setSamplerate(sr: number): void
     {
         console.log('set srate' + sr);
-        this.shtrk._set_value(si_gy_values.SI_GY_SRATE, Buffer.alloc(1, sr));
+        this.shtrk.setValue(si_gy_values.SI_GY_SRATE, Buffer.alloc(1, sr));
     }
     enableTx(): void
     {
-        this.shtrk._set_value(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 1));
+        this.shtrk.setValue(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 1));
     }
     disableTx(): void
     {
-        this.shtrk._set_value(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 0));
+        this.shtrk.setValue(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 0));
     }
     save(): void
     {
         console.log('Would save locally here');
     }
     reboot():
-        void{ this.shtrk._get_value(si_gy_values.SI_GY_RESET).then(err => {
+        void{ this.shtrk.getValue(si_gy_values.SI_GY_RESET).then(err => {
             this.shtrk.destroy();
             this.shtrk.init();
         }) } setInvertation(inv: HeadtrackerInvertation): void
     {
-        this.shtrk._set_value(
+        this.shtrk.setValue(
             si_gy_values.SI_GY_INV, Buffer.alloc(1, invertationToBitmask(inv)));
     }
     resetOrientation(): void
     {
-        this.shtrk._set_value(
+        this.shtrk.setValue(
             si_gy_values.SI_GY_RESET_ORIENTATION, Buffer.alloc(1, 1));
     }
     applyNetworkSettings(settings: HeadtrackerNetworkSettings): void
