@@ -112,24 +112,20 @@ class FirmwareManager {
 class AVRDUDEProgrammer {
 
     private _avrdude_executable: string;
-    private _avrdude_conf_arg: string;
+    private _avrdude_conf: string;
 
     constructor()
     {
         if (os.type() == 'Darwin') {
             this._avrdude_executable
                 = path.resolve(__dirname, '../bin/avrdude/Darwin/avrdude');
-            this._avrdude_conf_arg
-                = '-C '
-                  + path.resolve(
+            this._avrdude_conf = path.resolve(
                       __dirname, '../bin/avrdude/Darwin/avrdude.conf');
         }
         else if (os.type() == 'Windows_NT') {
             this._avrdude_executable = path.resolve(
                 __dirname, '../bin/avrdude/Windows_NT/avrdude.exe');
-            this._avrdude_conf_arg
-                = '-C '
-                  + path.resolve(
+            this._avrdude_conf = path.resolve(
                       __dirname, '../bin/avrdude/Windows_NT/avrdude.conf');
         }
         else {
@@ -164,6 +160,8 @@ class AVRDUDEProgrammer {
         
         let args = [];
 
+        args.push("-C");
+        args.push(this._avrdude_conf);
         args.push("-p");
         args.push("atmega328p")
         args.push("-c")
@@ -292,6 +290,15 @@ abstract class SerialConnection extends EventEmitter {
         this._serial_port.on('close', err => {
             log.info('Serial port closed');
         });
+
+        let man = new FirmwareManager();
+
+        man.initialize().then(() => {
+            let programmer = new AVRDUDEProgrammer();
+            programmer.flashFirmware(man.getLatest(), port.path);
+        });
+
+        port.close();
     }
 
     abstract onValueRequest(ty: si_gy_values): Buffer;
