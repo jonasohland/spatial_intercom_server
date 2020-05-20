@@ -267,8 +267,6 @@ abstract class SerialConnection extends EventEmitter {
 
     serial_init(port: SerialPort)
     {
-        let avrdude = new AVRDUDEProgrammer();
-
         let self = this;
 
         this._serial_buffer
@@ -290,15 +288,6 @@ abstract class SerialConnection extends EventEmitter {
         this._serial_port.on('close', err => {
             log.info('Serial port closed');
         });
-
-        let man = new FirmwareManager();
-
-        man.initialize().then(() => {
-            let programmer = new AVRDUDEProgrammer();
-            programmer.flashFirmware(man.getLatest(), port.path);
-        });
-
-        port.close();
     }
 
     abstract onValueRequest(ty: si_gy_values): Buffer;
@@ -444,7 +433,6 @@ abstract class SerialConnection extends EventEmitter {
                     this._serial_on_get_msg();
                     break;
                 case si_gy_message_types.SI_GY_ACK:
-                    console.log(b);
                     this.onACK(this._serial_current_value_type);
                     break;
                 case si_gy_message_types.SI_GY_RESP:
@@ -525,6 +513,9 @@ export class SerialHeadtracker extends SerialConnection {
         this.serial_init(serial);
     }
 
+    last_int = 0;
+    last_read_cnt = 0;
+
     async init()
     {
         return this.getValue(si_gy_values.SI_GY_HELLO)
@@ -542,9 +533,17 @@ export class SerialHeadtracker extends SerialConnection {
                 this._watchdog = setInterval(() => {
                     this.getValue(si_gy_values.SI_GY_INT_COUNT)
                         .then((data) => {
-                            console.log(`Interrupts: ${
-                                data.readUInt32LE(
-                                    0)} read ops: ${data.readUInt32LE(4)}`);
+
+                            let intc = data.readUInt32LE(0);
+                            let rcnt = data.readUInt32LE(4);
+
+                            let cintc = intc - this.last_int;
+                            let crcnt = rcnt - this.last_read_cnt;
+
+                            this.last_int = intc;
+                            this.last_read_cnt = rcnt;
+
+                            log.info(`Interrupts/s: ${cintc} read ops/s: ${crcnt}`);
                         });
                     this.notify(si_gy_values.SI_GY_ALIVE)
                         .then(() => {
@@ -554,7 +553,7 @@ export class SerialHeadtracker extends SerialConnection {
                             log.warn('Lost connection to Headtracker');
                             this._is_ok = false;
                         });
-                }, 2000, this);
+                }, 1000, this);
             });
     }
 
@@ -695,9 +694,9 @@ export class LocalHeadtracker extends Headtracker {
             // console.log(`${q.w.toFixed(1)} ${q.x.toFixed(1)}
             // ${q.y.toFixed(1)} ${q.z.toFixed(1)}`);
 
-            console.log(`Quaternion ${(e.yaw * 180 / Math.PI).toFixed(1)} ${
-                (e.pitch * 180 / Math.PI).toFixed(1)} ${
-                (e.roll * 180 / Math.PI).toFixed(1)}`);
+            // console.log(`Quaternion ${(e.yaw * 180 / Math.PI).toFixed(1)} ${
+            //    (e.pitch * 180 / Math.PI).toFixed(1)} ${
+            //    (e.roll * 180 / Math.PI).toFixed(1)}`);
 
             this.socket.send(osc.toBuffer({
                 oscType : 'bundle',
