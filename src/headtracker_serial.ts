@@ -18,7 +18,6 @@ import {
 
 import * as Logger from './log';
 import * as util from './util';
-import { add } from 'winston';
 
 const log = Logger.get('SHK');
 
@@ -250,21 +249,7 @@ class AVRDUDEProgrammer {
 
     constructor()
     {
-        if (os.type() == 'Darwin') {
-            this._avrdude_executable
-                = path.resolve(__dirname, '../bin/avrdude/Darwin/avrdude');
-            this._avrdude_conf = path.resolve(
-                      __dirname, '../bin/avrdude/Darwin/avrdude.conf');
-        }
-        else if (os.type() == 'Windows_NT') {
-            this._avrdude_executable = path.resolve(
-                __dirname, '../bin/avrdude/Windows_NT/avrdude.exe');
-            this._avrdude_conf = path.resolve(
-                      __dirname, '../bin/avrdude/Windows_NT/avrdude.conf');
-        }
-        else {
-            this._avrdude_executable = 'avrdude';
-        }
+        this._avrdude_executable = 'avrdude';
     }
 
     async isInstalled(): Promise<boolean>
@@ -286,9 +271,7 @@ class AVRDUDEProgrammer {
         await this.isInstalled();
         
         let args: string[] = [];
-
-        args.push("-C");
-        args.push(this._avrdude_conf);
+        
         args.push("-p");
         args.push("atmega328p")
         args.push("-c")
