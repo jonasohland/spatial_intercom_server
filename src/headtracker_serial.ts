@@ -173,6 +173,7 @@ export class FirmwareManager {
 
         return new Promise((mres, mrej) => {
         // check for dirs containing a valid "version" file (it was late....)
+        // clang-format off
         fs.readdir(
             firmwares_base_path,
             (err, files) => {
@@ -235,6 +236,7 @@ export class FirmwareManager {
                         mrej();
                     }) });
                 });
+        // clang-format on
     }
 
     getLatest(): HeadtrackerFirmware {
