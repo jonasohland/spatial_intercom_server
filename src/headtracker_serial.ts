@@ -15,19 +15,153 @@ import {
     HeadtrackerNetworkSettings,
     Quaternion
 } from './headtracker';
+
 import * as Logger from './log';
 import * as util from './util';
-import { rejects } from 'assert';
+import { add } from 'winston';
 
 const log = Logger.get('SHK');
 
-interface HeadtrackerFirmware {
+abstract class OutputAdapter {
+    abstract process(q: Quaternion): void;
+}
+
+abstract class UDPOutputAdapter extends OutputAdapter {
+
+    addr: string;
+    port: number;
+
+    socket: dgram.Socket;
+
+    constructor()
+    {   
+        super();
+        this.socket = dgram.createSocket('udp4');
+    }
+
+    setRemote(addr: string, port: number)
+    {
+        this.addr = addr;
+        this.port = port;
+    }
+
+    sendData(data: Buffer)
+    {
+        if(!this.addr)
+            return;
+
+        this.socket.send(data, this.port, this.addr);
+    }
+}
+
+abstract class OSCOutputAdapter extends UDPOutputAdapter {
+    
+    output_q: boolean;
+    output_e: boolean;
+
+    q_addr: [string, string, string, string];
+    e_addr: [string, string, string];
+
+    setOutputEuler(do_output: boolean)
+    {
+        this.output_e = do_output;
+    }
+
+    setOutputQuaternions(do_output: boolean)
+    {
+        this.output_q = do_output;
+    }
+
+    setQuatAddresses(addrs: [string,string,string,string])
+    {
+        this.q_addr = addrs;
+    }
+
+    setEulerAddresses(addrs: [string,string,string])
+    {
+        this.e_addr = addrs;
+    }
+
+    process(q: Quaternion)
+    {
+        if(this.output_e) {
+            let eulers = q.toEuler();
+            this.sendData(osc.toBuffer({
+                oscType: "bundle",
+                elements: [
+                    {
+                        oscType: "message",
+                        address: this.e_addr[0],
+                        args: [eulers.yaw] 
+                    },
+                    {
+                        oscType: "message",
+                        address: this.e_addr[1],
+                        args: [eulers.pitch] 
+                    },
+                    {
+                        oscType: "message",
+                        address: this.e_addr[2],
+                        args: [eulers.roll] 
+                    }
+                ]
+            }))
+        }
+        if(this.output_q) {
+            this.sendData(osc.toBuffer({
+                oscType: "bundle",
+                elements: [
+                    {
+                        oscType: "message",
+                        address: this.q_addr[0],
+                        args: [q.w]
+                    },
+                    {
+                        oscType: "message",
+                        address: this.q_addr[1],
+                        args: [q.x]
+                    },
+                    {
+                        oscType: "message",
+                        address: this.q_addr[2],
+                        args: [q.y]
+                    },
+                    {
+                        oscType: "message",
+                        address: this.q_addr[3],
+                        args: [q.z]
+                    }
+                ]
+            }))
+        }
+    }
+}
+
+class IEMOutputAdapter extends OSCOutputAdapter {
+    constructor() {
+        super();
+        this.setOutputQuaternions(true);
+        this.setQuatAddresses([
+            "/SceneRotator/qw",
+            "/SceneRotator/qx",
+            "/SceneRotator/qy",
+            "/SceneRotator/qz"
+        ]);
+        this.setEulerAddresses([
+            "/SceneRotator/yaw",
+            "/SceneRotator/pitch",
+            "/SceneRotator/roll"
+        ]);
+    }
+}
+
+export interface HeadtrackerFirmware {
     base_path: string;
     checksum?: string;
     version: string;
 }
 
-class FirmwareManager {
+export class FirmwareManager {
 
     firmwares: HeadtrackerFirmware[];
 
@@ -131,15 +265,6 @@ class AVRDUDEProgrammer {
         else {
             this._avrdude_executable = 'avrdude';
         }
-
-        this.isInstalled()
-            .then(is => {
-                log.info('AVRDUDE found');
-            })
-            .catch(err => {
-                log.warn(
-                    'AVRDUDE not found. Will not be able to flash new firmeware to the Headtracker.');
-            })
     }
 
     async isInstalled(): Promise<boolean>
@@ -156,9 +281,11 @@ class AVRDUDEProgrammer {
         })
     }
 
-    async flashFirmware(firmware: HeadtrackerFirmware, port: string) {
+    async flashFirmware(firmware: HeadtrackerFirmware, port: string): Promise<void> {
+
+        await this.isInstalled();
         
-        let args = [];
+        let args: string[] = [];
 
         args.push("-C");
         args.push(this._avrdude_conf);
@@ -174,12 +301,21 @@ class AVRDUDEProgrammer {
         args.push("-U")
         args.push(`flash:w:firmware.hex:i`);
 
-        cp.execFile(this._avrdude_executable, args, { cwd: firmware.base_path }, (err, stdout, stderr) => {
-            if(err)
-                console.log(err);
+        return new Promise((res, rej) => {
 
-            console.log("flash complete");
-        })
+            log.info("Writing firmware to device. This should take just a few seconds")
+
+            cp.execFile(this._avrdude_executable, args, { cwd: firmware.base_path }, (err, stdout, stderr) => {
+
+                if(err){
+                    console.log(err);
+                    rej();
+                }
+    
+                log.info("flash complete");
+                res();
+            });
+        });
     }
 }
 
@@ -263,31 +399,16 @@ abstract class SerialConnection extends EventEmitter {
     private _serial_current_value_type: si_gy_values;
     private _serial_current_msg_type: si_gy_message_types;
     private _serial_buffer: Buffer;
-    private _serial_port: SerialPort;
+    serial_port: SerialPort;
 
     serial_init(port: SerialPort)
     {
-        let self = this;
-
         this._serial_buffer
             = Buffer.alloc(Math.max(...si_serial_msg_lengths) + 5);
-        this._serial_port = port;
+        this.serial_port = port;
         this._serial_reset();
 
-        this._serial_port.on('readable', () => {
-            let data = self._serial_port.read();
-            // process.stdout.write("data_in: ");
-            // console.log(data);
-            for (let char of data) self.readByte(<number>char);
-        });
-
-        this._serial_port.on('error', err => {
-            log.error('Error on serial port: ' + err.message);
-        });
-
-        this._serial_port.on('close', err => {
-            log.info('Serial port closed');
-        });
+        this.openSerialPort();
     }
 
     abstract onValueRequest(ty: si_gy_values): Buffer;
@@ -295,6 +416,35 @@ abstract class SerialConnection extends EventEmitter {
     abstract onNotify(ty: si_gy_values, data: Buffer): void;
     abstract onACK(ty: si_gy_values): void;
     abstract onResponse(ty: si_gy_values, data: Buffer): void;
+
+    protected async closeSerialPort() {
+        return new Promise((res, rej) => {
+            this.serial_port.close(err => {
+                if(err)
+                    rej(err);
+                else
+                    res(err);
+            });
+        })
+    }
+
+    protected openSerialPort() {
+
+        let self = this;
+
+        this.serial_port.on('readable', () => {
+            let data = self.serial_port.read();
+            for (let char of data) self.readByte(<number>char);
+        });
+
+        this.serial_port.on('error', err => {
+            log.error('Error on serial port: ' + err.message);
+        });
+
+        this.serial_port.on('close', err => {
+            log.info('Serial port closed');
+        });
+    }
 
     serialNotify(val: si_gy_values)
     {
@@ -344,7 +494,7 @@ abstract class SerialConnection extends EventEmitter {
         out_b.writeUInt8(md, 5);
 
         buf.copy(out_b, 6, 0);
-        this._serial_port.write(out_b);
+        this.serial_port.write(out_b);
     }
 
     private _serial_on_get_msg()
@@ -507,6 +657,8 @@ export class SerialHeadtracker extends SerialConnection {
     _watchdog: NodeJS.Timeout;
     _is_ok: boolean = false;
 
+    software_version: string;
+
     constructor(serial: SerialPort)
     {
         super();
@@ -528,10 +680,14 @@ export class SerialHeadtracker extends SerialConnection {
                 return this.getValue(si_gy_values.SI_GY_VERSION);
             })
             .then((data) => {
-                log.info(`Headtracker software version: ${data.readUInt8(0)}.${
-                    data.readUInt8(1)}.${data.readUInt8(2)}`);
+
+                this.software_version = `${data.readUInt8(0)}.${
+                    data.readUInt8(1)}.${data.readUInt8(2)}`;
+
+                log.info(`Headtracker software version: ${this.software_version}`);
+                
                 this._watchdog = setInterval(() => {
-                    this.getValue(si_gy_values.SI_GY_INT_COUNT)
+                    /*this.getValue(si_gy_values.SI_GY_INT_COUNT)
                         .then((data) => {
 
                             let intc = data.readUInt32LE(0);
@@ -544,7 +700,7 @@ export class SerialHeadtracker extends SerialConnection {
                             this.last_read_cnt = rcnt;
 
                             log.info(`Interrupts/s: ${cintc} read ops/s: ${crcnt}`);
-                        });
+                        });*/
                     this.notify(si_gy_values.SI_GY_ALIVE)
                         .then(() => {
                             this._is_ok = true;
@@ -557,12 +713,14 @@ export class SerialHeadtracker extends SerialConnection {
             });
     }
 
-    destroy()
+    async destroy()
     {
         clearInterval(this._watchdog);
 
         while (this._rqueue.length)
             this._rqueue.shift().reject('Instance destroyed');
+
+        return this.closeSerialPort();
     }
 
     isOnline()
@@ -681,22 +839,14 @@ export class LocalHeadtracker extends Headtracker {
     {
         super();
         this.shtrk = new SerialHeadtracker(port);
-
         this.remote.conf = new HeadtrackerConfigPacket();
 
         this.shtrk.init().then(() => {
             this.emit('update');
+            this.emit('ready');
         });
 
         this.shtrk.on('quat', (q: Quaternion) => {
-            let e = q.toEuler();
-
-            // console.log(`${q.w.toFixed(1)} ${q.x.toFixed(1)}
-            // ${q.y.toFixed(1)} ${q.z.toFixed(1)}`);
-
-            // console.log(`Quaternion ${(e.yaw * 180 / Math.PI).toFixed(1)} ${
-            //    (e.pitch * 180 / Math.PI).toFixed(1)} ${
-            //    (e.roll * 180 / Math.PI).toFixed(1)}`);
 
             this.socket.send(osc.toBuffer({
                 oscType : 'bundle',
@@ -728,6 +878,28 @@ export class LocalHeadtracker extends Headtracker {
         });
 
         this.socket = dgram.createSocket('udp4');
+    }
+
+    async flashNewestFirmware(): Promise<void> {
+
+        let fwman = new FirmwareManager();
+
+        await fwman.initialize();
+
+        if(semver.compare(fwman.getLatest().version, this.shtrk.software_version) <= 0) {
+            log.info("Device already on newest software version");
+            return;
+        }
+
+        let ppath = this.shtrk.serial_port.path;
+        
+        await this.shtrk.destroy();
+        log.info("Port closed");
+        log.info(`Flashing firmware version ${fwman.getLatest().version}`);
+        
+        let pgm = new AVRDUDEProgrammer();
+
+        return pgm.flashFirmware(fwman.getLatest(), ppath);
     }
 
     setSamplerate(sr: number): void

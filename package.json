@@ -61,5 +61,12 @@
   },
   "devDependencies": {
     "typedoc": "^0.15.6"
-  }
+  },
+  "files":[
+    "dist/**/*",
+    "bin/**/*",
+    "src/**/*",
+    "platform/**/*",
+    "typings/**/*"
+  ]
 }

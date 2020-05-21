@@ -4,8 +4,9 @@ import * as Logger from './log';
 import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
-import { SerialHeadtracker, LocalHeadtracker } from './headtracker_serial';
+import { SerialHeadtracker, LocalHeadtracker, FirmwareManager } from './headtracker_serial';
 import usbDetect from 'usb-detection';
+import * as semver from 'semver';
 
 const { cyan } = chalk;
 const log = Logger.get('HTK');
@@ -59,24 +60,45 @@ async function selectPort(): Promise<string> {
     })
 }
 
-function start(path: string) {
+function runFlashMode(p: SerialPort, options: any)
+{
+    let htrk = new LocalHeadtracker(p);
 
+    htrk.on('ready', () => {
+        htrk.flashNewestFirmware().then(() => {
+            exit(0);
+        }).catch(err => {
+            exit(1);
+        })
+    });
+}
+
+function runNormalMode(p: SerialPort, options: any)
+{
     let wss = io(45040);
     let headtracking = new Headtracking(8887, wss);
+
+    headtracking.addHeadtracker(new LocalHeadtracker(p), 99, "local");
+}
+
+function start(path: string, options: any) {
     
     log.info("Opening port " + path);
     let p = new SerialPort(path, { autoOpen: false, baudRate: 115200 });
 
     p.on('open', err => {
 
+        log.info("Port is now open");
+
         if(err) {
             log.error(`Could not open port ${path}, error: ${err.message}`);
             exit(1);
         }
 
-        headtracking.addHeadtracker(new LocalHeadtracker(p), 99, "local");
+        if(options.flashFirmware)
+            return runFlashMode(p, options);
 
-        log.info("Port is now open");
+        runNormalMode(p, options);
     });
 
     p.open();
@@ -92,26 +114,11 @@ export default async function(port: string, options: any) {
 
         if(options.auto) {
             
-            usbDetect.startMonitoring();
-    
-            usbDetect.on('add:6790:29987', device => {
-                console.log('found a headtracker!');
-                console.log(device);
-                setTimeout(() => {
-                    SerialPort.list().then(ports => {
-                        ports.forEach(p => console.log(p));
-                    })
-                }, 4000);
-            });
-
-            usbDetect.on('remove:6790:29987', device => {
-                console.log('headtracker removed');
-            });
             return;
 
         } else {
             console.log("Please select a serial port (↑↓, Enter to confirm): ")
-            return selectPort().then(start);
+            return selectPort().then(port => start(port, options));
         }
     }
 
@@ -120,5 +127,5 @@ export default async function(port: string, options: any) {
     if(!isNaN(p_i))
         port = await findPort(p_i);
 
-    start(port);
+    start(port, options);
 }

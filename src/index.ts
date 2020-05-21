@@ -32,6 +32,9 @@ program.command('headtracker [serialport]')
 .option('-u, --units <unit>', 'Output units (deg/rad)', 'rad')
 .option('-i, --invert <x/y/z>', 'Invert these rotation axises. Example: --invert xz')
 .option('-z, --webserver-port', 'serve the webinterface to this port')
+.option('-f, --flash-firmware', 'flash the newest firmware to the headtracker')
+.option('--preset <preset>', 'Output format preset. Available: IEM', 'IEM')
+.option('-s, --slow-start')
 .action(headtracker_mode)
 
 program.command('htrk-bridge [serialport]')
@@ -40,6 +43,7 @@ program.command('htrk-bridge [serialport]')
 .option('-p, --port')
 .option('-i, --interface')
 .option('-n, --native', 'run in native mode (on a headtracker bridge device)')
+.option('-s, --slow-start')
 .action(htrk_bridge_mode);
 
 program.parse(process.argv);
