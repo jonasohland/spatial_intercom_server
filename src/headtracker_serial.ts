@@ -900,7 +900,7 @@ export class LocalHeadtracker extends Headtracker {
 
             let avg = sum / this._ltc.results.length;
 
-            log.info(`Results: MAX: ${Math.max(...this._ltc.results)}ms, MIN: ${Math.min(...this._ltc.results)}ms, AVG: ${avg}ms`)
+            log.info(`Results: MAX: ${Math.max(...this._ltc.results).toFixed(2)}ms, MIN: ${Math.min(...this._ltc.results).toFixed(2)}ms, AVG: ${avg.toFixed(2)}ms`)
 
             return this._ltc.done();
         }
