@@ -135,7 +135,7 @@ abstract class OSCOutputAdapter extends UDPOutputAdapter {
     }
 }
 
-class IEMOutputAdapter extends OSCOutputAdapter {
+export class IEMOutputAdapter extends OSCOutputAdapter {
     constructor()
     {
         super();
@@ -365,7 +365,7 @@ enum CON_STATE {
 
 const si_serial_msg_lengths = [
     0,
-    8,    // Quaternion
+    16,    // Quaternion
     1,    // Samplerate
     1,    // alive
     1,    // enable
@@ -802,7 +802,7 @@ export class SerialHeadtracker extends SerialConnection {
     onValueSet(ty: si_gy_values, data: Buffer): void
     {
         if (ty == si_gy_values.SI_GY_QUATERNION)
-            this.emit('quat', Quaternion.fromInt16Buffer(data, 0));
+            this.emit('quat', Quaternion.fromBuffer(data, 0));
     }
 
     onNotify(ty: si_gy_values, data: Buffer): void
@@ -892,8 +892,6 @@ export class LocalHeadtracker extends Headtracker {
 
     private async _ltc_run()
     {
-
-
         let tstart = process.hrtime.bigint();
         await this.shtrk.notify(si_gy_values.SI_GY_ALIVE);
         let tend = process.hrtime.bigint();
@@ -925,8 +923,6 @@ export class LocalHeadtracker extends Headtracker {
         setTimeout(this._ltc_run.bind(this), 30);
     }
 
-    private _ltc_on_response() {}
-
     setSamplerate(sr: number): void
     {
         console.log('set srate' + sr);
@@ -946,10 +942,14 @@ export class LocalHeadtracker extends Headtracker {
     {
         console.log('Would save locally here');
     }
-    reboot(): void{ this.shtrk.getValue(si_gy_values.SI_GY_RESET).then(err => {
-        this.shtrk.destroy();
-        this.shtrk.init();
-    }) } setInvertation(inv: HeadtrackerInvertation): void
+    reboot(): void
+    {
+        this.shtrk.getValue(si_gy_values.SI_GY_RESET).then(err => {
+            this.shtrk.destroy();
+            this.shtrk.init();
+        });
+    }
+    setInvertation(inv: HeadtrackerInvertation): void
     {
         this.shtrk.setValue(
             si_gy_values.SI_GY_INV, Buffer.alloc(1, invertationToBitmask(inv)));

@@ -117,7 +117,6 @@ export class Quaternion {
 
     static fromBuffer(buffer: Buffer, offset: number)
     {
-        console.log(buffer);
         return new Quaternion(buffer.readFloatLE(offset),
                               buffer.readFloatLE(offset + 4),
                               buffer.readFloatLE(offset + 8),

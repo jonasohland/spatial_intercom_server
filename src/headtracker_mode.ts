@@ -4,7 +4,7 @@ import * as Logger from './log';
 import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
-import { SerialHeadtracker, LocalHeadtracker, OutputAdapter } from './headtracker_serial';
+import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter } from './headtracker_serial';
 import usbDetect from 'usb-detection';
 import * as semver from 'semver';
 
@@ -16,6 +16,7 @@ const htrk_devices: SerialHeadtracker[] = [];
 
 class DummyOutputAdapter extends OutputAdapter {
     process(q: import("./headtracker").Quaternion): void {
+        console.log(q);
     }
 }
  
@@ -94,7 +95,12 @@ function runNormalMode(p: SerialPort, options: any)
     let wss = io(45040);
     let headtracking = new Headtracking(8887, wss);
 
-    headtracking.addHeadtracker(new LocalHeadtracker(p, new DummyOutputAdapter()), 99, "local");
+    let adapter = new IEMOutputAdapter();
+
+    adapter.setOutputQuaternions(true);
+    adapter.setRemote("127.0.0.1", 8886);
+
+    headtracking.addHeadtracker(new LocalHeadtracker(p, adapter), 99, "local");
 }
 
 function start(path: string, options: any) {
