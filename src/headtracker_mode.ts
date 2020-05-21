@@ -4,7 +4,7 @@ import * as Logger from './log';
 import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
-import { SerialHeadtracker, LocalHeadtracker, FirmwareManager } from './headtracker_serial';
+import { SerialHeadtracker, LocalHeadtracker, OutputAdapter } from './headtracker_serial';
 import usbDetect from 'usb-detection';
 import * as semver from 'semver';
 
@@ -14,6 +14,11 @@ import io from 'socket.io';
 
 const htrk_devices: SerialHeadtracker[] = [];
 
+class DummyOutputAdapter extends OutputAdapter {
+    process(q: import("./headtracker").Quaternion): void {
+    }
+}
+ 
 async function findPort(index: number) {
     return SerialPort.list().then(ports => {
         if(ports.length < index || index < 1) {
@@ -62,7 +67,7 @@ async function selectPort(): Promise<string> {
 
 function runFlashMode(p: SerialPort, options: any)
 {
-    let htrk = new LocalHeadtracker(p);
+    let htrk = new LocalHeadtracker(p, new DummyOutputAdapter());
 
     htrk.on('ready', () => {
         htrk.flashNewestFirmware().then(() => {
@@ -73,12 +78,23 @@ function runFlashMode(p: SerialPort, options: any)
     });
 }
 
+function runLatencyTest(p: SerialPort, options: any)
+{
+    let htrk = new LocalHeadtracker(p, new DummyOutputAdapter())
+
+    htrk.on('ready', () => {
+        htrk.checkLatency().then(() => {
+            exit();
+        })
+    })
+}
+
 function runNormalMode(p: SerialPort, options: any)
 {
     let wss = io(45040);
     let headtracking = new Headtracking(8887, wss);
 
-    headtracking.addHeadtracker(new LocalHeadtracker(p), 99, "local");
+    headtracking.addHeadtracker(new LocalHeadtracker(p, new DummyOutputAdapter()), 99, "local");
 }
 
 function start(path: string, options: any) {
@@ -97,6 +113,9 @@ function start(path: string, options: any) {
 
         if(options.flashFirmware)
             return runFlashMode(p, options);
+
+        if(options.testLatency)
+            return runLatencyTest(p, options);
 
         runNormalMode(p, options);
     });

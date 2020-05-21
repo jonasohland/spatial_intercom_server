@@ -21,7 +21,7 @@ import * as util from './util';
 
 const log = Logger.get('SHK');
 
-abstract class OutputAdapter {
+export abstract class OutputAdapter {
     abstract process(q: Quaternion): void;
 }
 
@@ -271,7 +271,7 @@ class AVRDUDEProgrammer {
         await this.isInstalled();
         
         let args: string[] = [];
-        
+
         args.push("-p");
         args.push("atmega328p")
         args.push("-c")
@@ -816,13 +816,23 @@ export class SerialHeadtracker extends SerialConnection {
 export class LocalHeadtracker extends Headtracker {
 
     shtrk: SerialHeadtracker;
-    socket: dgram.Socket;
+    output: OutputAdapter;
 
-    constructor(port: SerialPort)
+    _ltc: {
+        results: number[],
+        cnt?: number,
+        done?: () => void,
+        err?: () => void
+    } = {
+        results: [],
+    }
+
+    constructor(port: SerialPort, out: OutputAdapter)
     {
         super();
         this.shtrk = new SerialHeadtracker(port);
         this.remote.conf = new HeadtrackerConfigPacket();
+        this.output = out;
 
         this.shtrk.init().then(() => {
             this.emit('update');
@@ -830,37 +840,8 @@ export class LocalHeadtracker extends Headtracker {
         });
 
         this.shtrk.on('quat', (q: Quaternion) => {
-
-            this.socket.send(osc.toBuffer({
-                oscType : 'bundle',
-                elements : [
-                    {
-                        oscType : 'message',
-                        address : '/SceneRotator/qw',
-                        args : [ { type : 'float', value : q.w } ]
-                    },
-                    {
-                        oscType : 'message',
-                        address : '/SceneRotator/qx',
-                        args : [ { type : 'float', value : q.x } ]
-                    },
-                    {
-                        oscType : 'message',
-                        address : '/SceneRotator/qy',
-                        args : [ { type : 'float', value : q.y } ]
-                    },
-                    {
-                        oscType : 'message',
-                        address : '/SceneRotator/qz',
-                        args : [ { type : 'float', value : q.z } ]
-                    }
-                ]
-            }),
-                8886,
-                '127.0.0.1');
+            this.output.process(q);
         });
-
-        this.socket = dgram.createSocket('udp4');
     }
 
     async flashNewestFirmware(): Promise<void> {
@@ -885,18 +866,66 @@ export class LocalHeadtracker extends Headtracker {
         return pgm.flashFirmware(fwman.getLatest(), ppath);
     }
 
+    async checkLatency() 
+    {
+        log.info("Testing latency on Headtracker. This will take about 20 seconds");
+
+        return new Promise((res, rej) => {
+            this._ltc.done = res;
+            this._ltc.err = rej;
+            this._ltc.cnt = 0;
+            clearInterval(this.shtrk._watchdog);
+            this._ltc_run();
+        })
+    }
+
+    private async _ltc_run() {
+
+
+        let tstart = process.hrtime.bigint();
+        await this.shtrk.notify(si_gy_values.SI_GY_ALIVE);
+        let tend = process.hrtime.bigint();
+
+        let res = (Number(tend - tstart) / 1000000)
+
+        if(this._ltc.cnt > 50)
+            this._ltc.results.push(res);
+
+        this._ltc.cnt++;
+
+        if(this._ltc.cnt > 200) {
+
+            let sum = 0;
+            this._ltc.results.forEach(res => sum += res);
+
+            let avg = sum / this._ltc.results.length;
+
+            log.info(`Results: MAX: ${Math.max(...this._ltc.results)}ms, MIN: ${Math.min(...this._ltc.results)}ms, AVG: ${avg}ms`)
+
+            return this._ltc.done();
+        }
+
+        log.info(`Run# ${this._ltc.cnt - 50} latency: ${res.toFixed(3)}ms ${(this._ltc.cnt <= 50) ? "(warmup)": ""}`);
+
+        setTimeout(this._ltc_run.bind(this), 30);
+    }
+
+    private _ltc_on_response() {
+
+    }
+
     setSamplerate(sr: number): void
     {
         console.log('set srate' + sr);
         this.shtrk.setValue(si_gy_values.SI_GY_SRATE, Buffer.alloc(1, sr));
     }
-    enableTx(): void
+    enableTx(): Promise<void>
     {
-        this.shtrk.setValue(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 1));
+        return this.shtrk.setValue(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 1));
     }
-    disableTx(): void
+    disableTx(): Promise<void>
     {
-        this.shtrk.setValue(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 0));
+        return this.shtrk.setValue(si_gy_values.SI_GY_ENABLE, Buffer.alloc(1, 0));
     }
     save(): void
     {
