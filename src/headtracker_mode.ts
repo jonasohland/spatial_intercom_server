@@ -1,12 +1,9 @@
 import { Headtracking } from './headtracking'
-import express from 'express';
 import * as Logger from './log';
 import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
-import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter, OSCOutputAdapter } from './headtracker_serial';
-import usbDetect from 'usb-detection';
-import * as semver from 'semver';
+import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter, OSCOutputAdapter, QuaternionContainer } from './headtracker_serial';
 
 const { cyan } = chalk;
 const log = Logger.get('HTK');
@@ -15,7 +12,7 @@ import io from 'socket.io';
 const htrk_devices: SerialHeadtracker[] = [];
 
 class DummyOutputAdapter extends OutputAdapter {
-    process(q: import("./headtracker").Quaternion): void {
+    process(q: QuaternionContainer): void {
         console.log(q);
     }
 }

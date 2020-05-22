@@ -300,17 +300,56 @@ export class HeadtrackerDataPacket {
     y: number;
     z: number;
 
+    constructor(id: number, vals: [ number, number, number, number ])
+    {
+        this.device_id = id;
+        this.w         = vals[0];
+        this.x         = vals[0];
+        this.y         = vals[0];
+        this.z         = vals[0];
+    }
+
     static check(m: Buffer) {}
 
     static fromBuffer(m: Buffer)
     {
-        let p = new HeadtrackerDataPacket();
+        let p = new HeadtrackerDataPacket(m.readUInt16LE(4), [
+            m.readUInt16LE(6),
+            m.readUInt16LE(8),
+            m.readUInt16LE(10),
+            m.readUInt16LE(12)
+        ]);
+    }
 
-        p.device_id = m.readUInt16LE(4);
-        p.w         = m.readUInt16LE(6);
-        p.x         = m.readUInt16LE(8);
-        p.y         = m.readUInt16LE(10);
-        p.z         = m.readUInt16LE(12);
+    toBuffer()
+    {
+        let ob = Buffer.alloc(14);
+
+        ob.writeUInt16LE(this.device_id, 4);
+        ob.writeUInt16LE(this.w, 6);
+        ob.writeUInt16LE(this.x, 8);
+        ob.writeUInt16LE(this.y, 10);
+        ob.writeUInt16LE(this.z, 12);
+
+        return ob;
+    }
+
+    static newPacketFromFloatLEData(b: Buffer, dataoffs: number, id: number)
+    {
+        return new HeadtrackerDataPacket(id, [
+            b.readFloatLE(dataoffs) * 16384,
+            b.readFloatLE(dataoffs + 4) * 16384,
+            b.readFloatLE(dataoffs + 8) * 16384,
+            b.readFloatLE(dataoffs + 12) * 16384
+        ]).toBuffer();
+    }
+
+    static newPackerFromInt16Data(b: Buffer, dataoffs: number, id: number)
+    {
+        let ob = Buffer.alloc(14);
+        ob.writeInt16LE(id, 4);
+        b.copy(ob, 6, dataoffs, dataoffs + 8);
+        return ob;
     }
 
     getQuaternion()

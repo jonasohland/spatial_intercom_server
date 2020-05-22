@@ -5,9 +5,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as osc from 'osc-min';
 import * as path from 'path';
+import * as readline from 'readline';
 import * as semver from 'semver';
 import SerialPort from 'serialport';
-import * as readline from 'readline';
 
 import {
     Headtracker,
@@ -16,17 +16,47 @@ import {
     HeadtrackerNetworkSettings,
     Quaternion
 } from './headtracker';
-
 import * as Logger from './log';
 import * as util from './util';
 
 const log = Logger.get('SHK');
 
-export abstract class OutputAdapter {
-    abstract process(q: Quaternion): void;
+export class QuaternionContainer {
+
+    _is_float: Boolean;
+    _offset: number;
+    _buf: Buffer;
+
+    constructor(buf: Buffer, isFloat: boolean, offset: number)
+    {
+        this._is_float = isFloat;
+        this._offset   = offset;
+    }
+
+    get(): Quaternion
+    {
+        if (this._is_float)
+            return Quaternion.fromBuffer(this._buf, this._offset);
+        else
+            return Quaternion.fromInt16Buffer(this._buf, this._offset);
+    }
+
+    float()
+    {
+        return this._is_float;
+    }
+
+    data()
+    {
+        return { buffer : this._buf, offset : this._offset };
+    }
 }
 
-abstract class UDPOutputAdapter extends OutputAdapter {
+export abstract class OutputAdapter {
+    abstract process(q: QuaternionContainer): void;
+}
+
+export abstract class UDPOutputAdapter extends OutputAdapter {
 
     addr: string;
     port: number;
@@ -81,8 +111,10 @@ export class OSCOutputAdapter extends UDPOutputAdapter {
         this.e_addr = addrs;
     }
 
-    process(q: Quaternion)
+    process(qc: QuaternionContainer)
     {
+        let q = qc.get();
+
         if (this.output_e) {
             let eulers = q.toEuler();
             this.sendData(osc.toBuffer({
@@ -257,7 +289,7 @@ class AVRDUDEProgrammer {
 
     constructor(nanobootloader: string)
     {
-        this._nano_bootloader = nanobootloader;
+        this._nano_bootloader    = nanobootloader;
         this._avrdude_executable = 'avrdude';
     }
 
@@ -279,7 +311,7 @@ class AVRDUDEProgrammer {
 
         let args: string[] = [];
 
-        log.info(this._nano_bootloader + " bootloader selected");
+        log.info(this._nano_bootloader + ' bootloader selected');
 
         args.push('-p');
         args.push('atmega328p')
@@ -288,10 +320,9 @@ class AVRDUDEProgrammer {
         args.push('-P')
         args.push(port)
         args.push('-b')
-        if(this._nano_bootloader == 'new')
-            args.push('115200')
-        else
-            args.push('57600')
+        if (this._nano_bootloader == 'new')
+        args.push('115200')
+        else args.push('57600')
         args.push('-D')
         args.push('-U')
         args.push(`flash:w:firmware.hex:i`);
@@ -300,28 +331,27 @@ class AVRDUDEProgrammer {
             log.info(
                 'Writing firmware to device. This should take just a few seconds')
 
-            let avrd = cp.spawn(this._avrdude_executable,
-                                args,
-                                { stdio : [ 'pipe', 'pipe', 'pipe' ], cwd: firmware.base_path })
+            let avrd = cp.spawn(this._avrdude_executable, args, {
+                stdio : [ 'pipe', 'pipe', 'pipe' ],
+                cwd : firmware.base_path
+            })
 
             avrd.on('close', (code, sig) => {
-                if(code != 0) {
-                    log.error("avrdude failed with code " + code);
+                if (code != 0) {
+                    log.error('avrdude failed with code ' + code);
                     return rej();
                 }
-                log.info("avrdude exited with code 0");
+                log.info('avrdude exited with code 0');
                 res();
             });
 
-            const avrlog = Logger.get("AVR");
+            const avrlog = Logger.get('AVR');
 
-            const stdoutreader = readline.createInterface({
-                input: avrd.stdout
-            });
+            const stdoutreader
+                = readline.createInterface({ input : avrd.stdout });
 
-            const stderrreader = readline.createInterface({
-                input: avrd.stderr
-            });
+            const stderrreader
+                = readline.createInterface({ input : avrd.stderr });
 
             stderrreader.on('line', (line) => {
                 avrlog.warn(line);
@@ -827,7 +857,7 @@ export class SerialHeadtracker extends SerialConnection {
     onValueSet(ty: si_gy_values, data: Buffer): void
     {
         if (ty == si_gy_values.SI_GY_QUATERNION)
-            this.emit('quat', Quaternion.fromBuffer(data, 0));
+            this.emit('quat', new QuaternionContainer(data, true, 0));
     }
 
     onNotify(ty: si_gy_values, data: Buffer): void
@@ -871,7 +901,7 @@ export class LocalHeadtracker extends Headtracker {
             this.emit('ready');
         });
 
-        this.shtrk.on('quat', (q: Quaternion) => {
+        this.shtrk.on('quat', (q: QuaternionContainer) => {
             this.output.process(q);
         });
     }
@@ -942,8 +972,8 @@ export class LocalHeadtracker extends Headtracker {
             return this._ltc.done();
         }
 
-        log.info(`Run# ${this._ltc.cnt - 50} latency: ${res.toFixed(3)}ms ${
-            (this._ltc.cnt <= 50) ? '(warmup)' : ''}`);
+        // log.info(`Run# ${this._ltc.cnt - 50} latency: ${res.toFixed(3)}ms ${
+        //    (this._ltc.cnt <= 50) ? '(warmup)' : ''}`);
 
         setTimeout(this._ltc_run.bind(this), 30);
     }
@@ -988,9 +1018,9 @@ export class LocalHeadtracker extends Headtracker {
     {
         log.error('Cannot set network settings on serial headtracker');
     }
-    destroy()
+    async destroy()
     {
-        this.shtrk.destroy();
+        return this.shtrk.destroy();
     }
     isOnline()
     {

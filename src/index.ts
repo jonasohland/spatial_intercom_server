@@ -2,7 +2,7 @@ import * as commander from 'commander';
 import node_mode from './node_mode';
 import server_mode from './server_mode';
 import headtracker_mode from './headtracker_mode';
-import htrk_bridge_mode from './htrk_bridge_mode';
+import htrk_bridge_mode from './headtracker_bridge_mode';
 
 const program = new commander.Command();
 
@@ -32,6 +32,7 @@ program.command('headtracker [serialport]')
 .option('-h, --host <host>', 'Send data to this host', '127.0.0.1')
 .option('-p, --port <port>', 'Send data to this port', 8886)
 .option('-s, --sample-rate', 'specify sample rate')
+.option('-A, --auto-start', 'start sending packets immediately')
 .option('-f, --format <format>', 'Output format (euler/quaternion).', 'quaternion')
 // .option('-u, --units <unit>', 'Output units (deg/rad)', 'rad')
 // .option('-i, --invert <x/y/z>', 'Invert these rotation axises. Example: --invert xz')
@@ -47,7 +48,7 @@ program.command('htrk-bridge [serialport]')
 .option('-a, --auto', 'Find headtracker(s) on this system automatically (may be unreliable)')
 .option('-p, --port')
 .option('-i, --interface')
-.option('-n, --native', 'run in native mode (on a headtracker bridge device)')
+.option('--syslog', 'Run in syslog mode. This will remove redundant date/time from log output.')
 .option('-s, --slow-start')
 .action(htrk_bridge_mode);  
 
