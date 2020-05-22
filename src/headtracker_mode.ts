@@ -117,15 +117,19 @@ function runNormalMode(p: SerialPort, options: any)
     } 
 
     adapter.setRemote(options.host, options.port);
-    
-    if(options.quaternionAddr) {
-        let addrs = (<string> options.quaternionAddr).split(",");
-        adapter.setQuatAddresses(<[string, string, string, string]> addrs);
-    }
 
-    if(options.eulerAddr) {
-        let addrs = (<string> options.eulerAddr).split(",");
-        adapter.setEulerAddresses(<[string, string, string]> addrs);
+    if(!(options.preset)) {
+    
+        if(options.quaternionAddr) {
+            let addrs = (<string> options.quaternionAddr).split(",");
+            adapter.setQuatAddresses(<[string, string, string, string]> addrs);
+        }
+
+        if(options.eulerAddr) {
+            let addrs = (<string> options.eulerAddr).split(",");
+            adapter.setEulerAddresses(<[string, string, string]> addrs);
+        }
+
     }
 
     headtracking.addHeadtracker(new LocalHeadtracker(p, adapter), 99, "local");
