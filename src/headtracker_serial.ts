@@ -52,7 +52,7 @@ abstract class UDPOutputAdapter extends OutputAdapter {
     }
 }
 
-abstract class OSCOutputAdapter extends UDPOutputAdapter {
+export class OSCOutputAdapter extends UDPOutputAdapter {
 
     output_q: boolean;
     output_e: boolean;

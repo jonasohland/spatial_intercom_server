@@ -4,7 +4,7 @@ import * as Logger from './log';
 import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
-import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter } from './headtracker_serial';
+import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter, OSCOutputAdapter } from './headtracker_serial';
 import usbDetect from 'usb-detection';
 import * as semver from 'semver';
 
@@ -95,10 +95,38 @@ function runNormalMode(p: SerialPort, options: any)
     let wss = io(45040);
     let headtracking = new Headtracking(8887, wss);
 
-    let adapter = new IEMOutputAdapter();
+    let adapter: OSCOutputAdapter;
 
-    adapter.setOutputQuaternions(true);
-    adapter.setRemote("127.0.0.1", 8886);
+    if(options.preset) {
+        if(options.preset == 'IEM') {
+            adapter = new IEMOutputAdapter();
+        } else {
+            log.error("Preset " + options.preset  + " not found");
+            exit(1);
+        }
+    } else
+        adapter = new OSCOutputAdapter();
+
+    if(options.format == 'euler'){
+        adapter.setOutputQuaternions(false);
+        adapter.setOutputEuler(true);
+    }
+    else {
+        adapter.setOutputQuaternions(true);
+        adapter.setOutputEuler(false);
+    } 
+
+    adapter.setRemote(options.host, options.port);
+    
+    if(options.quaternionAddr) {
+        let addrs = (<string> options.quaternionAddr).split(",");
+        adapter.setQuatAddresses(<[string, string, string, string]> addrs);
+    }
+
+    if(options.eulerAddr) {
+        let addrs = (<string> options.eulerAddr).split(",");
+        adapter.setEulerAddresses(<[string, string, string]> addrs);
+    }
 
     headtracking.addHeadtracker(new LocalHeadtracker(p, adapter), 99, "local");
 }
