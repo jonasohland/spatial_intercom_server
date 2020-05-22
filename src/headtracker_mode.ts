@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter, OSCOutputAdapter, QuaternionContainer } from './headtracker_serial';
 
 const { cyan } = chalk;
-const log = Logger.get('HTK');
+const log = Logger.get('HEADTR');
 import io from 'socket.io';
 
 const htrk_devices: SerialHeadtracker[] = [];

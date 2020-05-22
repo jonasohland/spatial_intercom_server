@@ -19,7 +19,7 @@ import {
 import * as Logger from './log';
 import * as util from './util';
 
-const log = Logger.get('SHK');
+const log = Logger.get('SERIAL');
 
 export class QuaternionContainer {
 
@@ -476,7 +476,6 @@ abstract class SerialConnection extends EventEmitter {
 
     protected openSerialPort()
     {
-
         let self = this;
 
         this.serial_port.on('readable', () => {
@@ -490,7 +489,10 @@ abstract class SerialConnection extends EventEmitter {
 
         this.serial_port.on('close', err => {
             log.info('Serial port closed');
+            this.emit('close', err);
         });
+
+        this.serial_port.open();
     }
 
     serialNotify(val: si_gy_values)
@@ -758,12 +760,18 @@ export class SerialHeadtracker extends SerialConnection {
                             this._is_ok = false;
                         });
                 }, 1000, this);
+            }).catch(err => {
+                log.error(`Could not initialize device ${this.serial_port.path}. Error: ${err}`);
+                this.emit('close', err);
             });
     }
 
     async destroy()
     {
         clearInterval(this._watchdog);
+
+        if(this._req_current)
+            this._req_current.reject("Instance destroyed");
 
         while (this._rqueue.length)
             this._rqueue.shift().reject('Instance destroyed');
@@ -904,6 +912,10 @@ export class LocalHeadtracker extends Headtracker {
         this.shtrk.on('quat', (q: QuaternionContainer) => {
             this.output.process(q);
         });
+
+        this.shtrk.on('close', err => {
+            this.emit('close', err);
+        })
     }
 
     async flashNewestFirmware(nanobootloader: string): Promise<void>

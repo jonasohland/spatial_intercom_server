@@ -4,11 +4,15 @@ import * as Logger from './log';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
 import usbDetect from 'usb-detection';
-import { lstat } from 'fs';
-const { cyan } = chalk;
 import * as util from './util';
 import * as _ from 'lodash';
+import { EventEmitter } from 'events';
+import { HeadtrackerBridge } from './headtracker_bridge'
+
 const log = Logger.get("BRIDGE");
+const ulog = Logger.get("USBHST");
+
+const { cyan } = chalk;
 
 interface FindableDevice {
     vid: string;
@@ -22,60 +26,70 @@ const findable_devices: FindableDevice[] = [
     }
 ];
 
-
-class USBDetector { 
+class USBDetector extends EventEmitter { 
 
     _cached_paths: string[] = [];
-    _dev_found_retry_cnt: number = 0;
+    _devlist_refresh_cnt: number = 0;
 
-    constructor() 
+    start()
     {
+        ulog.info("Looking for usb-serial devices...");
         usbDetect.startMonitoring();
 
         findable_devices.forEach(dev => {
-            usbDetect.on(`add:${dev.vid}:${dev.pid}`, this.onDevFound.bind(this));
-            usbDetect.on(`remove:${dev.vid}:${dev.pid}`, this.onDevRemoved.bind(this));
+            usbDetect.on(`add:${dev.vid}:${dev.pid}`, this._dev_found_retry.bind(this));
+            usbDetect.on(`remove:${dev.vid}:${dev.pid}`, this._dev_remove.bind(this));
         });
 
         SerialPort.list().then((devs) => {
             this._cached_paths = devs.map(d => d.path);
+            this._cached_paths.forEach(this._add_device.bind(this));
         })
     }
 
-    async onDevFound(dev: usbDetect.Device) {
-        this._dev_found_retry();
+    _remove_device(path: string)
+    {
+        ulog.warn(path + " removed");
+        this.emit('remove' + path);
     }
 
-    async _dev_found_retry() {
+    _add_device(path: string)
+    {
+        let m = path.match(/usbserial|ttyUSB/g)
 
-        if(++this._dev_found_retry_cnt >= 10)
-            return log.error("Did not register new device");
+        if(!m || m.length != 1)
+            return;
+
+        ulog.info("Found new device: " + path);
+        this.emit('add', path);
+    }
+
+    async _dev_found_retry(dev: usbDetect.Device) {
+
+        if(++this._devlist_refresh_cnt >= 10)
+            return ulog.error("Could not register new device");
 
         let paths = (await SerialPort.list()).map(l => l.path);
-        let diff = util.arraydiff(this._cached_paths, paths);
+        let diff = util.arrayDiff(this._cached_paths, paths);
 
-        if(!(diff.length)) {
-            return setTimeout(this._dev_found_retry.bind(this), 200);
-        }
+        if(!(diff.length))
+            return setTimeout(this._dev_found_retry.bind(this, dev), 200);
 
-        console.log("New device:");
-        console.log(diff);
+        diff.forEach(this._add_device.bind(this));
 
-        this._dev_found_retry_cnt = 0;
+        this._devlist_refresh_cnt = 0;
         this._cached_paths = paths;
     }
 
-    async onDevRemoved(dev: usbDetect.Device) {
+    async _dev_remove(dev: usbDetect.Device) {
 
         let paths = (await SerialPort.list()).map(l => l.path);
-        let diff = util.arraydiff(paths, this._cached_paths);
+        let diff = util.arrayDiff(paths, this._cached_paths);
 
-        console.log("Removed:");
-        console.log(diff);
+        diff.forEach(this._remove_device.bind(this));
 
         this._cached_paths = paths;
     }   
-
 }
 
 async function findPort(index: number) {
@@ -145,11 +159,19 @@ function start(path: string, options: any) {
 export default async function(port: string, options: any) 
 {
     if(options.listPorts)
-        return listPorts().then(exit);
+       return listPorts().then(exit);
+
+    const bridge = new HeadtrackerBridge();
 
     if(!port) {
         if(options.auto) {
+            
             let detect = new USBDetector();
+
+            detect.on('add', bridge.addDevice.bind(bridge));
+            detect.on('remove', bridge.removeDevice.bind(bridge));
+            detect.start();
+
             return;
         } else {
             console.log("Please select a serial port (↑↓, Enter to confirm): ")

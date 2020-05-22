@@ -25,7 +25,7 @@ export function bitValue(bit: number): number {
     return (1 << (bit))
 }
 
-export function arraydiff<T>(base: Array<T>, excl: Array<T>): Array<T> {
+export function arrayDiff<T>(base: Array<T>, excl: Array<T>): Array<T> {
     let cpy = Array.from(base);
     let ecpy = Array.from(excl);
 
