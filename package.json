@@ -62,7 +62,7 @@
   "devDependencies": {
     "typedoc": "^0.15.6"
   },
-  "files":[
+  "files": [
     "dist/**/*",
     "bin/**/*",
     "src/**/*",
