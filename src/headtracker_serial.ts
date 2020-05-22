@@ -7,6 +7,7 @@ import * as osc from 'osc-min';
 import * as path from 'path';
 import * as semver from 'semver';
 import SerialPort from 'serialport';
+import * as readline from 'readline';
 
 import {
     Headtracker,
@@ -252,9 +253,11 @@ class AVRDUDEProgrammer {
 
     private _avrdude_executable: string;
     private _avrdude_conf: string;
+    private _nano_bootloader: string;
 
-    constructor()
+    constructor(nanobootloader: string)
     {
+        this._nano_bootloader = nanobootloader;
         this._avrdude_executable = 'avrdude';
     }
 
@@ -272,10 +275,11 @@ class AVRDUDEProgrammer {
     async flashFirmware(firmware: HeadtrackerFirmware, port: string):
         Promise<void>
     {
-
         await this.isInstalled();
 
         let args: string[] = [];
+
+        log.info(this._nano_bootloader + " bootloader selected");
 
         args.push('-p');
         args.push('atmega328p')
@@ -284,7 +288,10 @@ class AVRDUDEProgrammer {
         args.push('-P')
         args.push(port)
         args.push('-b')
-        args.push('57600')
+        if(this._nano_bootloader == 'new')
+            args.push('115200')
+        else
+            args.push('57600')
         args.push('-D')
         args.push('-U')
         args.push(`flash:w:firmware.hex:i`);
@@ -293,18 +300,36 @@ class AVRDUDEProgrammer {
             log.info(
                 'Writing firmware to device. This should take just a few seconds')
 
-            cp.execFile(this._avrdude_executable,
-                        args,
-                        { cwd : firmware.base_path },
-                        (err, stdout, stderr) => {
-                            if (err) {
-                                console.log(err);
-                                rej();
-                            }
+            let avrd = cp.spawn(this._avrdude_executable,
+                                args,
+                                { stdio : [ 'pipe', 'pipe', 'pipe' ], cwd: firmware.base_path })
 
-                            log.info('flash complete');
-                            res();
-                        });
+            avrd.on('close', (code, sig) => {
+                if(code != 0) {
+                    log.error("avrdude failed with code " + code);
+                    return rej();
+                }
+                log.info("avrdude exited with code 0");
+                res();
+            });
+
+            const avrlog = Logger.get("AVR");
+
+            const stdoutreader = readline.createInterface({
+                input: avrd.stdout
+            });
+
+            const stderrreader = readline.createInterface({
+                input: avrd.stderr
+            });
+
+            stderrreader.on('line', (line) => {
+                avrlog.warn(line);
+            })
+
+            stdoutreader.on('line', (line) => {
+                avrlog.info(line);
+            })
         });
     }
 }
@@ -366,17 +391,17 @@ enum CON_STATE {
 const si_serial_msg_lengths = [
     0,
     16,    // Quaternion
-    1,    // Samplerate
-    1,    // alive
-    1,    // enable
-    1,    // gy connected
-    1,    // gy found
-    3,    // gy software version
-    5,    // "Hello" message
-    1,    // reset
-    1,    // invertation
-    1,    // reset orientation
-    8,    // interrupt/read counts
+    1,     // Samplerate
+    1,     // alive
+    1,     // enable
+    1,     // gy connected
+    1,     // gy found
+    3,     // gy software version
+    5,     // "Hello" message
+    1,     // reset
+    1,     // invertation
+    1,     // reset orientation
+    8,     // interrupt/read counts
     0
 ];
 
@@ -851,7 +876,7 @@ export class LocalHeadtracker extends Headtracker {
         });
     }
 
-    async flashNewestFirmware(): Promise<void>
+    async flashNewestFirmware(nanobootloader: string): Promise<void>
     {
 
         let fwman = new FirmwareManager();
@@ -871,7 +896,7 @@ export class LocalHeadtracker extends Headtracker {
         log.info('Port closed');
         log.info(`Flashing firmware version ${fwman.getLatest().version}`);
 
-        let pgm = new AVRDUDEProgrammer();
+        let pgm = new AVRDUDEProgrammer(nanobootloader);
 
         return pgm.flashFirmware(fwman.getLatest(), ppath);
     }

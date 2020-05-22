@@ -71,7 +71,7 @@ function runFlashMode(p: SerialPort, options: any)
     let htrk = new LocalHeadtracker(p, new DummyOutputAdapter());
 
     htrk.on('ready', () => {
-        htrk.flashNewestFirmware().then(() => {
+        htrk.flashNewestFirmware(options.bootloader).then(() => {
             exit(0);
         }).catch(err => {
             exit(1);
@@ -170,12 +170,13 @@ export default async function(port: string, options: any) {
     if(!port) {
 
         if(options.auto) {
-            
             return;
-
         } else {
             console.log("Please select a serial port (↑↓, Enter to confirm): ")
-            return selectPort().then(port => start(port, options));
+            return selectPort().then(port => start(port, options)).catch(err => {
+                log.error("Could not select serial port " + err);
+                exit(1);
+            })
         }
     }
 
