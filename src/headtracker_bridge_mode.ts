@@ -4,7 +4,10 @@ import * as Logger from './log';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
 import usbDetect from 'usb-detection';
+import { lstat } from 'fs';
 const { cyan } = chalk;
+import * as util from './util';
+import * as _ from 'lodash';
 const log = Logger.get("BRIDGE");
 
 interface FindableDevice {
@@ -19,7 +22,11 @@ const findable_devices: FindableDevice[] = [
     }
 ];
 
+
 class USBDetector { 
+
+    _cached_paths: string[] = [];
+    _dev_found_retry_cnt: number = 0;
 
     constructor() 
     {
@@ -30,16 +37,45 @@ class USBDetector {
             usbDetect.on(`remove:${dev.vid}:${dev.pid}`, this.onDevRemoved.bind(this));
         });
 
-        usbDetect.find()
+        SerialPort.list().then((devs) => {
+            this._cached_paths = devs.map(d => d.path);
+        })
     }
 
-    onDevRemoved(dev: usbDetect.Device) {
-        log.info("Device on location " + dev.locationId + " removed");
+    async onDevFound(dev: usbDetect.Device) {
+        this._dev_found_retry();
+    }
+
+    async _dev_found_retry() {
+
+        if(++this._dev_found_retry_cnt >= 10)
+            return log.error("Did not register new device");
+
+        let paths = (await SerialPort.list()).map(l => l.path);
+        let diff = util.arraydiff(this._cached_paths, paths);
+
+        if(!(diff.length)) {
+            return setTimeout(this._dev_found_retry.bind(this), 200);
+        }
+
+        console.log("New device:");
+        console.log(diff);
+
+        this._dev_found_retry_cnt = 0;
+        this._cached_paths = paths;
+    }
+
+    async onDevRemoved(dev: usbDetect.Device) {
+
+        let paths = (await SerialPort.list()).map(l => l.path);
+        let diff = util.arraydiff(paths, this._cached_paths);
+
+        console.log("Removed:");
+        console.log(diff);
+
+        this._cached_paths = paths;
     }   
 
-    onDevFound(dev: usbDetect.Device) {
-        log.info("Found device on location " + dev.locationId);
-    }
 }
 
 async function findPort(index: number) {

@@ -1,5 +1,6 @@
 import * as os from 'os';
 import * as cp from 'child_process';
+import { copyFile } from 'fs';
 
 export function applyMixins(derivedCtor: any, baseCtors: any[])
 {
@@ -22,4 +23,17 @@ export function openForUser(thing: string) {
 
 export function bitValue(bit: number): number {
     return (1 << (bit))
+}
+
+export function arraydiff<T>(base: Array<T>, excl: Array<T>): Array<T> {
+    let cpy = Array.from(base);
+    let ecpy = Array.from(excl);
+
+    cpy.forEach(e => {
+        let idx = ecpy.findIndex(k => k === e)
+        if(idx != -1)
+            ecpy.splice(idx, 1);
+    })
+
+    return ecpy;
 }
