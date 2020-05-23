@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npm run build && node ./dist/index.js"
+    "start": "npm run build && node ./dist/index.js",
+    "deploy": "bin/delpoy.sh"
   },
   "bin": {
     "si": "bin/cli.js"
