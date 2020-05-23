@@ -161,11 +161,13 @@ export default async function(port: string, options: any)
     if(options.listPorts)
        return listPorts().then(exit);
 
+    log.info("Starting up Spatial Intercom Headtracker Bridge");
+
     const bridge = new HeadtrackerBridge();
 
     if(!port) {
         if(options.auto) {
-            
+
             let detect = new USBDetector();
 
             detect.on('add', bridge.addDevice.bind(bridge));

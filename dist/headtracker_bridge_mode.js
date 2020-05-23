@@ -148,6 +148,7 @@ function default_1(port, options) {
     return __awaiter(this, void 0, void 0, function* () {
         if (options.listPorts)
             return listPorts().then(exit);
+        log.info("Starting up Spatial Intercom Headtracker Bridge");
         const bridge = new headtracker_bridge_1.HeadtrackerBridge();
         if (!port) {
             if (options.auto) {
