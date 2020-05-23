@@ -3,6 +3,7 @@ import node_mode from './node_mode';
 import server_mode from './server_mode';
 import headtracker_mode from './headtracker_mode';
 import htrk_bridge_mode from './headtracker_bridge_mode';
+import install_service from './install_service';
 
 const program = new commander.Command();
 
@@ -51,5 +52,8 @@ program.command('htrk-bridge [serialport]')
 .option('--syslog', 'Run in syslog mode. This will remove redundant date/time from log output.')
 .option('-s, --slow-start')
 .action(htrk_bridge_mode);  
+
+program.command('install-service')
+.action(install_service);
 
 program.parse(process.argv);
