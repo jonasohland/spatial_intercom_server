@@ -18,19 +18,6 @@ rm -rf $temp_rep_dir/si_deploy/typings
 mv -f $temp_rep_dir/package/*  $temp_rep_dir/si_deploy
 
 git -C $temp_rep_dir/si_deploy add .
-git -C $temp_rep_dir/si_deploy commit -am "Deploy-auto-commit from release "$(cat package.json | jq -r .version)" commit jonasohland/spatial_intercom_server@"$(git rev-parse --short HEAD)
+git -C $temp_rep_dir/si_deploy commit -am "Deploy commit @"$(cat package.json | jq -r .version)" from jonasohland/spatial_intercom_server@"$(git rev-parse --short HEAD)
 git -C $temp_rep_dir/si_deploy push
 rm -rf $temp_rep_dir
-
-
-# mv $temp_rep_dir/si_deploy $temp_rep_dir
-# cd __deploy_dir
-
-# tar -xzvf ../$package_archive
-# git -C $temp_rep_dir add
-# git commit -am "Deploy auto-commit. Build from commit# "$(git rev-parse HEAD)
-# git push
-
-# cd ..
-
-# cd $temp_pwd
