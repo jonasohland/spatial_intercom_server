@@ -18,8 +18,10 @@ import {
 } from './headtracker';
 import * as Logger from './log';
 import * as util from './util';
+import { threadId } from 'worker_threads';
 
 const log = Logger.get('SERIAL');
+const MINIMUM_SWVERSION = "0.1.0"
 
 export class QuaternionContainer {
 
@@ -31,6 +33,7 @@ export class QuaternionContainer {
     {
         this._is_float = isFloat;
         this._offset   = offset;
+        this._buf       = buf;
     }
 
     get(): Quaternion
@@ -377,7 +380,9 @@ function invertationToBitmask(inv: HeadtrackerInvertation)
 
 enum si_gy_values {
     SI_GY_VALUES_MIN = 0,
-    SI_GY_QUATERNION,
+    SI_GY_ID,
+    SI_GY_QUATERNION_FLOAT,
+    SI_GY_QUATERNION_INT16,
     SI_GY_SRATE,
     SI_GY_ALIVE,
     SI_GY_ENABLE,
@@ -420,7 +425,9 @@ enum CON_STATE {
 
 const si_serial_msg_lengths = [
     0,
-    16,    // Quaternion
+    1,     // ID
+    16,    // Quaternion16
+    8,     // Quaternion16
     1,     // Samplerate
     1,     // alive
     1,     // enable
@@ -465,6 +472,10 @@ abstract class SerialConnection extends EventEmitter {
     protected async closeSerialPort()
     {
         return new Promise((res, rej) => {
+
+            if(!this.serial_port.isOpen)
+                return res();
+
             this.serial_port.close(err => {
                 if (err)
                     rej(err);
@@ -488,7 +499,6 @@ abstract class SerialConnection extends EventEmitter {
         });
 
         this.serial_port.on('close', err => {
-            log.info('Serial port closed');
             this.emit('close', err);
         });
 
@@ -705,6 +715,7 @@ export class SerialHeadtracker extends SerialConnection {
     _req_free: boolean;
     _watchdog: NodeJS.Timeout;
     _is_ok: boolean = false;
+    _id: number = 0;
 
     software_version: string;
 
@@ -735,22 +746,18 @@ export class SerialHeadtracker extends SerialConnection {
                 log.info(
                     `Headtracker software version: ${this.software_version}`);
 
+                if(semver.compare(this.software_version, MINIMUM_SWVERSION) < 0){
+                    log.error("Headtracker software version not supported. Please update with --flash-firmware");
+                    throw "Unsupported Software Version";
+                }
+
+                return this.getValue(si_gy_values.SI_GY_ID);
+            }).then((data) => {
+                this._id = data.readUInt8(0);
+                log.info("Device ID: " + this._id);
+
                 this._watchdog = setInterval(() => {
-                    /*this.getValue(si_gy_values.SI_GY_INT_COUNT)
-                        .then((data) => {
 
-                            let intc = data.readUInt32LE(0);
-                            let rcnt = data.readUInt32LE(4);
-
-                            let cintc = intc - this.last_int;
-                            let crcnt = rcnt - this.last_read_cnt;
-
-                            this.last_int = intc;
-                            this.last_read_cnt = rcnt;
-
-                            log.info(`Interrupts/s: ${cintc} read ops/s:
-                       ${crcnt}`);
-                        });*/
                     this.notify(si_gy_values.SI_GY_ALIVE)
                         .then(() => {
                             this._is_ok = true;
@@ -759,6 +766,7 @@ export class SerialHeadtracker extends SerialConnection {
                             log.warn('Lost connection to Headtracker');
                             this._is_ok = false;
                         });
+                
                 }, 1000, this);
             }).catch(err => {
                 log.error(`Could not initialize device ${this.serial_port.path}. Error: ${err}`);
@@ -864,8 +872,10 @@ export class SerialHeadtracker extends SerialConnection {
 
     onValueSet(ty: si_gy_values, data: Buffer): void
     {
-        if (ty == si_gy_values.SI_GY_QUATERNION)
+        if (ty == si_gy_values.SI_GY_QUATERNION_FLOAT)
             this.emit('quat', new QuaternionContainer(data, true, 0));
+        else if(ty == si_gy_values.SI_GY_QUATERNION_INT16)
+            this.emit('quat', new QuaternionContainer(data, false, 0));
     }
 
     onNotify(ty: si_gy_values, data: Buffer): void

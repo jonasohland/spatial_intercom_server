@@ -1,5 +1,6 @@
 import dgram, {RemoteInfo} from 'dgram';
 import * as dnssd from 'dnssd';
+import {EventEmitter} from 'events';
 import SerialPort from 'serialport';
 
 import {
@@ -12,17 +13,25 @@ import {
     HeadtrackerStateFlags,
     Quaternion
 } from './headtracker';
+
 import {} from './headtracker_network'
+
 import {
     LocalHeadtracker,
     QuaternionContainer,
     UDPOutputAdapter
 } from './headtracker_serial';
+
 import * as Logger from './log';
 import {ShowfileManager} from './showfiles'
-import { EventEmitter } from 'events';
+import express from 'express';
 
 const log = Logger.get('BRIDGE');
+
+interface HeadtrackerService {
+    id: number;
+    service: dnssd.Service;
+}
 
 class SIOutputAdapter extends UDPOutputAdapter {
 
@@ -52,21 +61,29 @@ export class HeadtrackerBridgeDevice extends EventEmitter {
     {
         super();
 
-        this.path = port.path;
+        this.path   = port.path;
         this.output = new SIOutputAdapter();
         this.lhtrk  = new LocalHeadtracker(port, this.output);
 
         this.lhtrk.on('close', (err) => {
-            log.warn("Headtracker closed");
             this.emit('close');
-        })
+        });
+
+        this.lhtrk.on('ready', () => {
+
+            let sname = `si_htrk_${
+                (this.lhtrk.shtrk._id < 10) ? '0' + this.lhtrk.shtrk._id
+                                            : this.lhtrk.shtrk._id}`;
+
+            log.info("Headtracker ready. Adding new mdns advertisement: _htrk._udp." + sname);
+
+            this._adv = new dnssd.Advertisement(
+                dnssd.udp('_htrk'), 5697, { host: sname, name: sname });
+
+            this._adv.start();
+        });
 
         this.output.setRemote('127.0.0.1', 9999);
-
-        this._adv = new dnssd.Advertisement(
-            dnssd.udp('_htrk'), 5697, { host : 'si_htrk_01' });
-
-        this._adv.start();
     }
 
     async reconnect(port: SerialPort)
@@ -75,10 +92,15 @@ export class HeadtrackerBridgeDevice extends EventEmitter {
         this.lhtrk = new LocalHeadtracker(port, this.output);
     }
 
-    destroy() 
+    destroy()
     {
+        if(this._adv)
+            this._adv.stop(false, () => {
+                log.info("Advertisement for " + this.path + " removed");
+            });
+
         this.lhtrk.destroy().catch((err) => {
-            log.warn("Could not close port: " + err);
+            log.warn('Could not close port: ' + err);
         });
     }
 }
@@ -87,6 +109,13 @@ export class HeadtrackerBridge {
 
     _devs: HeadtrackerBridgeDevice[] = [];
     _remote: RemoteInfo;
+    _app: express.Application;
+
+    constructor() {
+        this._app = express();
+
+        this._app.get("headtracker")
+    }
 
     findDeviceForPath(p: string)
     {
@@ -107,7 +136,7 @@ export class HeadtrackerBridge {
             new SerialPort(p, { baudRate : 115200, autoOpen : false }));
 
         this._devs.push(newdev);
-        
+
         newdev.on('close', this.removeDevice.bind(this, p));
     }
 
@@ -115,11 +144,10 @@ export class HeadtrackerBridge {
     {
         let dev = this.findDeviceForPath(p);
 
-        if(!dev)
-            return;
+        if (!dev) return;
 
         dev.destroy();
-        
+
         log.info('Closing port and deregistering device at ' + p);
 
         this._devs.splice(this._devs.indexOf(dev), 1);
