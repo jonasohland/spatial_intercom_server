@@ -10,7 +10,10 @@ import { Headtracker,
         HeadtrackerConfigFlags, 
         HeadtrackerNetworkFlags, 
         HeadtrackerNetworkSettings, 
-        HeadtrackerStateFlags } from './headtracker'
+        HeadtrackerStateFlags, 
+        HeadtrackerConfigPacket} from './headtracker'
+
+import { ShowfileTarget, Showfile, ShowfileManager } from './showfiles';
 
 // import mkbonjour, { Bonjour, Browser } from 'bonjour-hap';
 
@@ -18,16 +21,28 @@ let comCheckInterval = 10000;
 
 const log = Logger.get('HTK');
 
-export class Headtracking extends EventEmitter {
+export class Headtracking extends ShowfileTarget {
+
+    onShowfileLoad(s: Showfile): void {
+        log.info("")
+    }
+    onEmptyShowfileCreate(s: Showfile): void {
+        // nothing to do here
+    }
+    targetName() {
+        return "headtracking";
+    }
 
     local_interface: string;
 
     browser: dnssd.Browser;
     trackers: Headtracker[] = [];
 
+    saved_htrk_data: HeadtrackerConfigPacket[];
+
     server: SocketIO.Server;
 
-    constructor(port: number, interf: SocketIO.Server, netif?: string)
+    constructor(port: number, interf: SocketIO.Server, man: ShowfileManager, netif?: string)
     {
         super();
 
@@ -44,6 +59,8 @@ export class Headtracking extends EventEmitter {
         this.browser.start();
 
         let self = this;
+
+        man.register(this);
 
         this.server.on('connection', socket => {
             socket.on('htrk.update.req', () => {
@@ -99,7 +116,6 @@ export class Headtracking extends EventEmitter {
                                    id,
                                    service.addresses[0],
                                    service.port,
-                                   Math.floor(Math.random() * 10000) + 5000,
                                    this.local_interface);
         htrk.start();
 

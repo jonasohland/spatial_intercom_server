@@ -7,8 +7,10 @@ import * as discovery from './discovery'
 import * as Logger from './log'
 import * as Inputs from './inputs';
 import { UsersManager } from './users';
+import { ShowfileManager, ShowfileTarget } from './showfiles';
 import express from 'express';
 import * as util from './util';
+import { Manager } from './vst';
 
 const log = Logger.get('SRV');
 
@@ -29,6 +31,7 @@ export class SpatialIntercomServer {
     audio_device_manager: AudioDevices.AudioDeviceManager;
     inputs: Inputs.InputManager
     users: UsersManager;
+    showfileman: ShowfileManager;
 
     app: express.Application;
 
@@ -45,6 +48,8 @@ export class SpatialIntercomServer {
                 log.info("Webserver running");
             });
         }
+
+        this.showfileman = new ShowfileManager();
         
         this.advertiser = discovery.getServerAdvertiser(config.interface);
         this.webinterface_advertiser = discovery.getWebinterfaceAdvertiser(config.web_interface);
@@ -53,12 +58,14 @@ export class SpatialIntercomServer {
         this.audio_device_manager = new AudioDevices.AudioDeviceManager(this.webif_server, this.instances);
         this.inputs = new Inputs.InputManager(this.webif_server, this.audio_device_manager);
 
-        this.headtracking = new Headtracking.Headtracking(33032, this.webif_server, config.interface);
+        this.headtracking = new Headtracking.Headtracking(33032, this.webif_server, this.showfileman, config.interface);
         this.users = new UsersManager(this.webif_server, this.inputs, this.headtracking);
         this.server.on('connection', this.newInstanceFound.bind(this));
     
         this.advertiser.start();
         this.webinterface_advertiser.start();
+
+        
     }
 
     newInstanceFound(socket: io.Socket){

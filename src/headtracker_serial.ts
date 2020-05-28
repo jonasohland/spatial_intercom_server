@@ -753,7 +753,9 @@ export class SerialHeadtracker extends SerialConnection {
 
                 return this.getValue(si_gy_values.SI_GY_ID);
             }).then((data) => {
-                this._id = data.readUInt8(0);
+
+                // keep only bottom 6 bits
+                this._id = (data.readUInt8(0) & 64) - 1;
                 log.info("Device ID: " + this._id);
 
                 this._watchdog = setInterval(() => {

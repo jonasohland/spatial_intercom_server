@@ -8,7 +8,9 @@ import * as IPC from './ipc'
 import * as server_config from './server_config'
 
 const local_addresses = <string[]>[];
+
 const ifaces = os.networkInterfaces();
+
 Object.keys(ifaces).forEach(function(ifname) {
     var alias = 0;
     ifaces[ifname].forEach(function(iface) {

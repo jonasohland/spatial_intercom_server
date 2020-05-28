@@ -8,6 +8,9 @@ import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter, O
 const { cyan } = chalk;
 const log = Logger.get('HEADTR');
 import io from 'socket.io';
+import { ShowfileManager } from './showfiles';
+
+const sfman = new ShowfileManager();
 
 const htrk_devices: SerialHeadtracker[] = [];
 
@@ -90,7 +93,7 @@ function runLatencyTest(p: SerialPort, options: any)
 function runNormalMode(p: SerialPort, options: any)
 {
     let wss = io(45040);
-    let headtracking = new Headtracking(8887, wss);
+    let headtracking = new Headtracking(8887, wss, sfman);
 
     let adapter: OSCOutputAdapter;
 

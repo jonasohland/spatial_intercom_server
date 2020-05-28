@@ -414,20 +414,7 @@ export class UsersManager extends EventEmitter {
 
         if(trk){
             
-            let trkaddr = trk.remote.conf.device_static_ip;
-            let trksubnet = trk.remote.conf.device_static_subnet;
-
-            let trk_net = IP.mask(trkaddr, trksubnet);
-            
-            for(let node_addr of node.si.addresses){
-
-                let node_net = IP.mask(node_addr, trksubnet);
-
-                console.log(`node: ${node_net} trk: ${trk_net}`);
-
-                if(node_net === trk_net)
-                    return (trk.setStreamDest(node_addr, 45667));
-            }
+            return (trk.setStreamDest(node.si.addresses[0], 45667));
 
             log.error('Could not find a matching subnet for node and Headtracker');
         } else {

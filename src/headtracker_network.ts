@@ -60,7 +60,6 @@ export class NetworkHeadtracker extends Headtracker {
                 id: number,
                 addr: string,
                 port: number,
-                local_port: number,
                 netif?: string)
     {
         super();
@@ -73,7 +72,6 @@ export class NetworkHeadtracker extends Headtracker {
 
         this.dumping = false;
 
-        this.local.port  = local_port;
         this.local.netif = netif;
 
         this.socket = createDgramSocket('udp4');
@@ -101,10 +99,13 @@ export class NetworkHeadtracker extends Headtracker {
 
     _onListening()
     {
+        this.local.port = this.socket.address().port;
+        this.local.netif = this.socket.address().address;
+
         if (this._state(HTRKDevState.CONNECTING)) {
 
             log.info(`Listening for headtracking unit #${
-                this.remote.id} on port ${this.remote.port}`);
+                this.remote.id} at port ${this.remote.port}`);
 
             this.response_timeout
                 = setTimeout(this._onResponseTimeout.bind(this), 2000);
@@ -209,11 +210,9 @@ export class NetworkHeadtracker extends Headtracker {
     {
         if (this._state(HTRKDevState.CONNECTED)) return;
 
-        log.info(`Binding socket to ${this.local.netif}:${this.local.port}`);
-
         this._setState(HTRKDevState.CONNECTING);
 
-        this.socket.bind(this.local.port, this.local.netif);
+        this.socket.bind();
     }
 
     _disconnect()
