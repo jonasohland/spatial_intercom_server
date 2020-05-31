@@ -504,7 +504,7 @@ abstract class SerialConnection extends EventEmitter {
             this.emit('close', err);
         });
 
-        this.serial_port.open();
+        // this.serial_port.open();
     }
 
     serialNotify(val: si_gy_values)
@@ -1044,6 +1044,7 @@ export class LocalHeadtracker extends Headtracker {
     }
     resetOrientation(): void
     {
+        log.info("Resetting orienation on headtracker " + this.shtrk._id);
         this.shtrk.setValue(
             si_gy_values.SI_GY_RESET_ORIENTATION, Buffer.alloc(1, 1));
     }
@@ -1066,6 +1067,7 @@ export class LocalHeadtracker extends Headtracker {
 
     async calibrate()
     {
+        log.info("Calibrating headtracker " + this.shtrk._id);
         return this.shtrk.setValue(si_gy_values.SI_GY_CALIBRATE, Buffer.alloc(1, 7));
     }
 }

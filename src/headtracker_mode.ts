@@ -4,15 +4,70 @@ import SerialPort from 'serialport';
 import { terminal } from 'terminal-kit';
 import chalk from 'chalk';
 import { SerialHeadtracker, LocalHeadtracker, OutputAdapter, IEMOutputAdapter, OSCOutputAdapter, QuaternionContainer } from './headtracker_serial';
+import * as dgram from 'dgram';
+import * as osc from 'osc-min';
 
 const { cyan } = chalk;
 const log = Logger.get('HEADTR');
 import io from 'socket.io';
 import { ShowfileManager } from './showfiles';
+import { AddressInfo } from 'net';
 
 const sfman = new ShowfileManager();
 
 const htrk_devices: SerialHeadtracker[] = [];
+
+class OSCController {
+
+    sock: dgram.Socket
+    ht: Headtracking
+    port: number;
+
+    constructor(ht: Headtracking, options: any)
+    {
+        this.port = Number.parseInt(options.ctrlPort);
+
+        this.ht = ht;
+
+        this.sock = dgram.createSocket('udp4');
+        this.sock.bind(this.port, this.onBound.bind(this));
+        this.sock.on("message", this.onMessage.bind(this));
+    }
+
+    onBound() {
+        log.info("Listening for control messages on port " + this.port)
+    }
+
+    onMessage(buf: Buffer, addrinf: AddressInfo)
+    {
+        let packet = osc.fromBuffer(buf);
+
+        if(packet.oscType == "message") {
+            if(packet.address == "/calibrate"){
+                log.info("Received '/calibrate' message");
+                this.ht.trackers.forEach(t => t.calibrate())
+            }        
+            else if(packet.address == "/reset-orientation") {
+                log.info("Received '/reset-orientation' message");
+                this.ht.trackers.forEach(t => t.resetOrientation());
+            } else if(packet.address == "/start") {
+                this.ht.trackers.forEach(t => t.enableTx());
+            } else if(packet.address == "/stop") {
+                this.ht.trackers.forEach(t => t.disableTx())
+            } else if(packet.address == "/srate") {
+                console.log(packet);
+                if(packet.args.length == 1) {
+                    let sratep = <osc.OSCMessageArg> packet.args[0];
+
+                    if(!(sratep.type === 'integer'))
+                        log.error("Fick dich Till");
+
+                    this.ht.trackers.forEach(t => t.setSamplerate(<number> sratep.value));
+                }
+            }
+        }
+    }
+}
 
 class DummyOutputAdapter extends OutputAdapter {
     process(q: QuaternionContainer): void {
@@ -94,6 +149,10 @@ function runNormalMode(p: SerialPort, options: any)
 {
     let wss = io(45040);
     let headtracking = new Headtracking(8887, wss, sfman);
+
+    if(options.oscControl) 
+        new OSCController(headtracking, options);
+    
 
     let adapter: OSCOutputAdapter;
 

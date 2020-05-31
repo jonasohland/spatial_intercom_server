@@ -378,6 +378,11 @@ export class NetworkHeadtracker extends Headtracker {
         this._updateDevice();
     }
 
+    calibrate()
+    {
+        log.warn("Calibrate-stub called");
+    }
+
     applyNetworkSettings(settings: HeadtrackerNetworkSettings)
     {
         if (settings.id) this.local.conf.setDeviceID(settings.id);
