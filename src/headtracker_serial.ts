@@ -21,7 +21,7 @@ import * as util from './util';
 import { threadId } from 'worker_threads';
 
 const log = Logger.get('SERIAL');
-const MINIMUM_SWVERSION = "0.1.0"
+const MINIMUM_SWVERSION = "0.2.0"
 
 export class QuaternionContainer {
 
@@ -394,6 +394,7 @@ enum si_gy_values {
     SI_GY_INV,
     SI_GY_RESET_ORIENTATION,
     SI_GY_INT_COUNT,
+    SI_GY_CALIBRATE,
     SI_GY_VALUES_MAX
 }
 
@@ -439,6 +440,7 @@ const si_serial_msg_lengths = [
     1,     // invertation
     1,     // reset orientation
     8,     // interrupt/read counts
+    1,     // calibrate
     0
 ];
 
@@ -770,6 +772,7 @@ export class SerialHeadtracker extends SerialConnection {
                         });
                 
                 }, 1000, this);
+
             }).catch(err => {
                 log.error(`Could not initialize device ${this.serial_port.path}. Error: ${err}`);
                 this.emit('close', err);
@@ -919,6 +922,12 @@ export class LocalHeadtracker extends Headtracker {
         this.shtrk.init().then(() => {
             this.emit('update');
             this.emit('ready');
+
+            log.info("Calibrating...");
+
+            this.calibrate().then(() => { 
+                log.info("Calibration started. Please dont move the device for 10 seconds");
+            })
         });
 
         this.shtrk.on('quat', (q: QuaternionContainer) => {
@@ -1053,5 +1062,10 @@ export class LocalHeadtracker extends Headtracker {
     setStreamDest(addr: string, port: number)
     {
         log.error('Cannot set stream destination on serial headtracker');
+    }
+
+    async calibrate()
+    {
+        return this.shtrk.setValue(si_gy_values.SI_GY_CALIBRATE, Buffer.alloc(1, 7));
     }
 }
