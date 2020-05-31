@@ -12,6 +12,7 @@ const log = Logger.get('HEADTR');
 import io from 'socket.io';
 import { ShowfileManager } from './showfiles';
 import { AddressInfo } from 'net';
+import { HeadtrackerInvertation } from './headtracker';
 
 const sfman = new ShowfileManager();
 
@@ -55,14 +56,30 @@ class OSCController {
             } else if(packet.address == "/stop") {
                 this.ht.trackers.forEach(t => t.disableTx())
             } else if(packet.address == "/srate") {
-                console.log(packet);
                 if(packet.args.length == 1) {
                     let sratep = <osc.OSCMessageArg> packet.args[0];
-
                     if(!(sratep.type === 'integer'))
-                        log.error("Fick dich Till");
-
+                        return log.error("Fick dich Till");
                     this.ht.trackers.forEach(t => t.setSamplerate(<number> sratep.value));
+                }
+            } else if (packet.address == '/invert') {
+
+                if(packet.args.length == 1) {
+                    let argp = <osc.OSCMessageArg> packet.args[0];
+                    if(argp.type == 'string') {
+                        let str = <string> argp.value;
+                        let axs = str.split("");
+
+                        let inv: HeadtrackerInvertation = {
+                            x: axs.indexOf('x') != -1,
+                            y: axs.indexOf('y') != -1,
+                            z: axs.indexOf('z') != -1
+                        }
+
+                        console.log(inv);
+
+                        this.ht.trackers.forEach(t => t.setInvertation(inv));
+                    }
                 }
             }
         }
