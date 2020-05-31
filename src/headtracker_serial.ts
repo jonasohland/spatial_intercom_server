@@ -771,7 +771,7 @@ export class SerialHeadtracker extends SerialConnection {
                             this._is_ok = false;
                         });
                 
-                }, 1000, this);
+                }, 20000, this);
 
             }).catch(err => {
                 log.error(`Could not initialize device ${this.serial_port.path}. Error: ${err}`);
@@ -1068,6 +1068,7 @@ export class LocalHeadtracker extends Headtracker {
     async calibrate()
     {
         log.info("Calibrating headtracker " + this.shtrk._id);
+        setTimeout(() => log.info("Calibration done"), 10000)
         return this.shtrk.setValue(si_gy_values.SI_GY_CALIBRATE, Buffer.alloc(1, 7));
     }
 }
