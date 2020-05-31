@@ -19,7 +19,7 @@ import { ShowfileTarget, Showfile, ShowfileManager } from './showfiles';
 
 let comCheckInterval = 10000;
 
-const log = Logger.get('HTK');
+const log = Logger.get('HTKHST');
 
 export class Headtracking extends ShowfileTarget {
 
@@ -184,7 +184,7 @@ export class Headtracking extends ShowfileTarget {
             .filter(v => v != null);
         // clang-format on
 
-        console.log(tracker_update);
+        // log.info("Update webinterface")
 
         if (socket)
             socket.emit('htrk.update', tracker_update);

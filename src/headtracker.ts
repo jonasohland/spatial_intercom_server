@@ -384,7 +384,7 @@ export abstract class Headtracker extends EventEmitter {
     abstract reboot(): void;
     abstract setInvertation(inv: HeadtrackerInvertation): void;
     abstract resetOrientation(): void;
-    abstract calibrate(): void;
+    abstract async calibrate(loops? :number, cb?: (prog: number, step: number) => void): Promise<void>;
     abstract applyNetworkSettings(settings: HeadtrackerNetworkSettings): void;
     abstract destroy(): void;
     abstract isOnline(): boolean;

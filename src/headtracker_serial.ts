@@ -19,9 +19,11 @@ import {
 import * as Logger from './log';
 import * as util from './util';
 import { threadId } from 'worker_threads';
+import { Terminal } from 'terminal-kit';
+import { isRegExp } from 'util';
 
 const log = Logger.get('SERIAL');
-const MINIMUM_SWVERSION = "0.2.0"
+const MINIMUM_SWVERSION = "0.2.1"
 
 export class QuaternionContainer {
 
@@ -881,6 +883,9 @@ export class SerialHeadtracker extends SerialConnection {
             this.emit('quat', new QuaternionContainer(data, true, 0));
         else if(ty == si_gy_values.SI_GY_QUATERNION_INT16)
             this.emit('quat', new QuaternionContainer(data, false, 0));
+        else if(ty == si_gy_values.SI_GY_CALIBRATE) 
+            this.emit('calib', data.readUInt8(0));
+            
     }
 
     onNotify(ty: si_gy_values, data: Buffer): void
@@ -906,6 +911,15 @@ export class LocalHeadtracker extends Headtracker {
     shtrk: SerialHeadtracker;
     output: OutputAdapter;
 
+    progb: Terminal.ProgressBarController;
+
+    _calib_res: () => void;
+    _calib_rej: () => void;
+    _calib_loops: number = 0;
+    _calib_target: number = 0;
+    _calib_step: number = 0;
+    _calib_prog_cb: (prog: number, step: number) => void; 
+
     _ltc:
         { results: number[], cnt?: number, done?: () => void, err?: () => void }
     = {
@@ -922,12 +936,6 @@ export class LocalHeadtracker extends Headtracker {
         this.shtrk.init().then(() => {
             this.emit('update');
             this.emit('ready');
-
-            log.info("Calibrating...");
-
-            this.calibrate().then(() => { 
-                log.info("Calibration started. Please dont move the device for 10 seconds");
-            })
         });
 
         this.shtrk.on('quat', (q: QuaternionContainer) => {
@@ -936,7 +944,9 @@ export class LocalHeadtracker extends Headtracker {
 
         this.shtrk.on('close', err => {
             this.emit('close', err);
-        })
+        });
+
+        this.shtrk.on('calib', this._calibration_cb.bind(this));
     }
 
     async flashNewestFirmware(nanobootloader: string): Promise<void>
@@ -976,6 +986,17 @@ export class LocalHeadtracker extends Headtracker {
             clearInterval(this.shtrk._watchdog);
             this._ltc_run();
         })
+    }
+
+    _calibration_cb(prog: number)
+    {
+        if(this._calib_prog_cb)
+            this._calib_prog_cb((prog + 1) / this._calib_target, this._calib_step);
+
+        if((prog + 1) == this._calib_target) {
+            if(++this._calib_step == 2)
+                this._calib_res();
+        }
     }
 
     private async _ltc_run()
@@ -1065,10 +1086,21 @@ export class LocalHeadtracker extends Headtracker {
         log.error('Cannot set stream destination on serial headtracker');
     }
 
-    async calibrate()
+    async calibrate(loops?: number, prog_cb?: (prog: number, steps: number) => void): Promise<void>
     {
+        this._calib_prog_cb = prog_cb;
+        this._calib_target = loops || 32;
+
+        this._calib_step = 0;
+
         log.info("Calibrating headtracker " + this.shtrk._id);
-        setTimeout(() => log.info("Calibration done"), 10000)
-        return this.shtrk.setValue(si_gy_values.SI_GY_CALIBRATE, Buffer.alloc(1, 7));
+
+        return new Promise((res, rej) => {
+
+            this._calib_res = res;
+            this._calib_rej = rej;
+
+            this.shtrk.setValue(si_gy_values.SI_GY_CALIBRATE, Buffer.alloc(1, this._calib_target));
+        })
     }
 }

@@ -45,8 +45,27 @@ class OSCController {
 
         if(packet.oscType == "message") {
             if(packet.address == "/calibrate"){
+
                 log.info("Received '/calibrate' message");
-                this.ht.trackers.forEach(t => t.calibrate())
+
+                let pg = terminal.progressBar({ title: "Calibrating Gyro", percent: true })
+
+                this.ht.trackers.forEach(t => t.calibrate(16, (prog, step) => {
+                    
+                    pg.update(prog);
+                    
+                    if(prog == 1) {
+                        pg = terminal.progressBar({ title: "Calibrating Acc", percent: true })
+                    }
+
+                }).then(() => {
+                    pg.update(1)
+                    setTimeout(() => {
+                        pg.stop();
+                        console.log();
+                        log.info("Calibration done!");
+                    }, 500);
+                }))
             }        
             else if(packet.address == "/reset-orientation") {
                 log.info("Received '/reset-orientation' message");
@@ -208,7 +227,13 @@ function runNormalMode(p: SerialPort, options: any)
 
     }
 
-    headtracking.addHeadtracker(new LocalHeadtracker(p, adapter), 99, "local");
+    let ht = new LocalHeadtracker(p, adapter);
+
+    ht.on('close', () => {
+        exit();
+    })
+
+    headtracking.addHeadtracker(ht, 99, "local");
 }
 
 function start(path: string, options: any) {

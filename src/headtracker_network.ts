@@ -378,9 +378,12 @@ export class NetworkHeadtracker extends Headtracker {
         this._updateDevice();
     }
 
-    calibrate()
+    calibrate(): Promise<void>
     {
         log.warn("Calibrate-stub called");
+        return new Promise((res) => {
+            res();
+        });
     }
 
     applyNetworkSettings(settings: HeadtrackerNetworkSettings)
