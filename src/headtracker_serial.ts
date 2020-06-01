@@ -8,6 +8,9 @@ import * as path from 'path';
 import * as readline from 'readline';
 import * as semver from 'semver';
 import SerialPort from 'serialport';
+import {Terminal} from 'terminal-kit';
+import {isRegExp} from 'util';
+import {threadId} from 'worker_threads';
 
 import {
     Headtracker,
@@ -18,12 +21,9 @@ import {
 } from './headtracker';
 import * as Logger from './log';
 import * as util from './util';
-import { threadId } from 'worker_threads';
-import { Terminal } from 'terminal-kit';
-import { isRegExp } from 'util';
 
-const log = Logger.get('SERIAL');
-const MINIMUM_SWVERSION = "0.2.1"
+const log               = Logger.get('SERIAL');
+const MINIMUM_SWVERSION = '0.3.0'
 
 export class QuaternionContainer {
 
@@ -35,7 +35,7 @@ export class QuaternionContainer {
     {
         this._is_float = isFloat;
         this._offset   = offset;
-        this._buf       = buf;
+        this._buf      = buf;
     }
 
     get(): Quaternion
@@ -397,6 +397,8 @@ enum si_gy_values {
     SI_GY_RESET_ORIENTATION,
     SI_GY_INT_COUNT,
     SI_GY_CALIBRATE,
+    SI_GY_INIT_BEGIN,
+    SI_GY_INIT_FINISH,
     SI_GY_VALUES_MAX
 }
 
@@ -443,6 +445,8 @@ const si_serial_msg_lengths = [
     1,     // reset orientation
     8,     // interrupt/read counts
     1,     // calibrate
+    1,     // gy init begin
+    1,     // gy init finish
     0
 ];
 
@@ -476,9 +480,7 @@ abstract class SerialConnection extends EventEmitter {
     protected async closeSerialPort()
     {
         return new Promise((res, rej) => {
-
-            if(!this.serial_port.isOpen)
-                return res();
+            if (!this.serial_port.isOpen) return res();
 
             this.serial_port.close(err => {
                 if (err)
@@ -719,7 +721,7 @@ export class SerialHeadtracker extends SerialConnection {
     _req_free: boolean;
     _watchdog: NodeJS.Timeout;
     _is_ok: boolean = false;
-    _id: number = 0;
+    _id: number     = 0;
 
     software_version: string;
 
@@ -750,20 +752,21 @@ export class SerialHeadtracker extends SerialConnection {
                 log.info(
                     `Headtracker software version: ${this.software_version}`);
 
-                if(semver.compare(this.software_version, MINIMUM_SWVERSION) < 0){
-                    log.error("Headtracker software version not supported. Please update with --flash-firmware");
-                    throw "Unsupported Software Version";
+                if (semver.compare(this.software_version, MINIMUM_SWVERSION)
+                    < 0) {
+                    log.error(
+                        'Headtracker software version not supported. Please update with --flash-firmware');
+                    throw 'Unsupported Software Version';
                 }
 
                 return this.getValue(si_gy_values.SI_GY_ID);
-            }).then((data) => {
-
+            })
+            .then((data) => {
                 // keep only bottom 6 bits
                 this._id = (data.readUInt8(0) & 64) - 1;
-                log.info("Device ID: " + this._id);
+                log.info('Device ID: ' + this._id);
 
                 this._watchdog = setInterval(() => {
-
                     this.notify(si_gy_values.SI_GY_ALIVE)
                         .then(() => {
                             this._is_ok = true;
@@ -772,11 +775,11 @@ export class SerialHeadtracker extends SerialConnection {
                             log.warn('Lost connection to Headtracker');
                             this._is_ok = false;
                         });
-                
                 }, 15000, this);
-
-            }).catch(err => {
-                log.error(`Could not initialize device ${this.serial_port.path}. Error: ${err}`);
+            })
+            .catch(err => {
+                log.error(`Could not initialize device ${
+                    this.serial_port.path}. Error: ${err}`);
                 this.emit('close', err);
             });
     }
@@ -785,8 +788,7 @@ export class SerialHeadtracker extends SerialConnection {
     {
         clearInterval(this._watchdog);
 
-        if(this._req_current)
-            this._req_current.reject("Instance destroyed");
+        if (this._req_current) this._req_current.reject('Instance destroyed');
 
         while (this._rqueue.length)
             this._rqueue.shift().reject('Instance destroyed');
@@ -881,11 +883,10 @@ export class SerialHeadtracker extends SerialConnection {
     {
         if (ty == si_gy_values.SI_GY_QUATERNION_FLOAT)
             this.emit('quat', new QuaternionContainer(data, true, 0));
-        else if(ty == si_gy_values.SI_GY_QUATERNION_INT16)
+        else if (ty == si_gy_values.SI_GY_QUATERNION_INT16)
             this.emit('quat', new QuaternionContainer(data, false, 0));
-        else if(ty == si_gy_values.SI_GY_CALIBRATE) 
+        else if (ty == si_gy_values.SI_GY_CALIBRATE)
             this.emit('calib', data.readUInt8(0));
-            
     }
 
     onNotify(ty: si_gy_values, data: Buffer): void
@@ -913,12 +914,12 @@ export class LocalHeadtracker extends Headtracker {
 
     progb: Terminal.ProgressBarController;
 
-    _calib_res: () => void;
-    _calib_rej: () => void;
-    _calib_loops: number = 0;
-    _calib_target: number = 0;
-    _calib_step: number = 0;
-    _calib_prog_cb: (prog: number, step: number) => void; 
+    _calib_res: ()                               => void;
+    _calib_rej: ()                               => void;
+    _calib_loops: number                         = 0;
+    _calib_target: number                        = 0;
+    _calib_step: number                          = 0;
+    _calib_prog_cb: (prog: number, step: number) => void;
 
     _ltc:
         { results: number[], cnt?: number, done?: () => void, err?: () => void }
@@ -990,12 +991,12 @@ export class LocalHeadtracker extends Headtracker {
 
     _calibration_cb(prog: number)
     {
-        if(this._calib_prog_cb)
-            this._calib_prog_cb((prog + 1) / this._calib_target, this._calib_step);
+        if (this._calib_prog_cb)
+            this._calib_prog_cb(
+                (prog + 1) / this._calib_target, this._calib_step);
 
-        if((prog + 1) == this._calib_target) {
-            if(++this._calib_step == 2)
-                this._calib_res();
+        if ((prog + 1) == this._calib_target) {
+            if (++this._calib_step == 2) this._calib_res();
         }
     }
 
@@ -1065,10 +1066,22 @@ export class LocalHeadtracker extends Headtracker {
     }
     resetOrientation(): void
     {
-        log.info("Resetting orienation on headtracker " + this.shtrk._id);
+        log.info('Resetting orienation on headtracker ' + this.shtrk._id);
         this.shtrk.setValue(
             si_gy_values.SI_GY_RESET_ORIENTATION, Buffer.alloc(1, 1));
     }
+
+    beginInit(): Promise<void>
+    {
+        return <Promise<void>><unknown>this.shtrk.getValue(
+            si_gy_values.SI_GY_INIT_BEGIN, Buffer.alloc(1, 1));
+    }
+    finishInit(): Promise<void>
+    {
+        return <Promise<void>><unknown>this.shtrk.getValue(
+            si_gy_values.SI_GY_INIT_FINISH, Buffer.alloc(1, 1));
+    }
+
     applyNetworkSettings(settings: HeadtrackerNetworkSettings): void
     {
         log.error('Cannot set network settings on serial headtracker');
@@ -1086,21 +1099,23 @@ export class LocalHeadtracker extends Headtracker {
         log.error('Cannot set stream destination on serial headtracker');
     }
 
-    async calibrate(loops?: number, prog_cb?: (prog: number, steps: number) => void): Promise<void>
+    async calibrate(loops?: number,
+                    prog_cb
+                    ?: (prog: number, steps: number) => void): Promise<void>
     {
         this._calib_prog_cb = prog_cb;
-        this._calib_target = loops || 32;
+        this._calib_target  = loops || 32;
 
         this._calib_step = 0;
 
-        log.info("Calibrating headtracker " + this.shtrk._id);
+        log.info('Calibrating headtracker ' + this.shtrk._id);
 
         return new Promise((res, rej) => {
-
             this._calib_res = res;
             this._calib_rej = rej;
 
-            this.shtrk.setValue(si_gy_values.SI_GY_CALIBRATE, Buffer.alloc(1, this._calib_target));
+            this.shtrk.setValue(si_gy_values.SI_GY_CALIBRATE,
+                                Buffer.alloc(1, this._calib_target));
         })
     }
 }

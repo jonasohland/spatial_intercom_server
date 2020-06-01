@@ -107,6 +107,20 @@ class OSCController {
                         this.ht.trackers.forEach(t => t.setInvertation(inv));
                     }
                 }
+            } else if (packet.address == '/begin_init') {
+                this.ht.trackers.forEach(t => {
+                    log.info("Beginning initialization");
+                    t.beginInit().then(() => {
+                        log.info("OK. Nod down and proceed to next step");
+                    })
+                })
+            } else if (packet.address == '/end_init') {
+                this.ht.trackers.forEach(t => {
+                    log.info("Finish initialization");
+                    t.finishInit().then(() => {
+                        log.info("Initialization done");
+                    })
+                })
             }
         }
     }
@@ -196,7 +210,6 @@ function runNormalMode(p: SerialPort, options: any)
     if(options.oscControl) 
         new OSCController(headtracking, options);
     
-
     let adapter: OSCOutputAdapter;
 
     if(options.preset) {

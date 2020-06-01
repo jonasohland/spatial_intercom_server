@@ -32,6 +32,7 @@ enum HTRKMsgState {
 }
 
 export class NetworkHeadtracker extends Headtracker {
+
     msg_state: HTRKMsgState;
 
     update_required: boolean;
@@ -384,6 +385,14 @@ export class NetworkHeadtracker extends Headtracker {
         return new Promise((res) => {
             res();
         });
+    }
+
+    beginInit(): Promise<void> {
+        return undefined;
+    }
+    
+    finishInit(): Promise<void> {
+        return undefined;
     }
 
     applyNetworkSettings(settings: HeadtrackerNetworkSettings)
