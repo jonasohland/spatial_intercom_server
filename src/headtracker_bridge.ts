@@ -62,6 +62,8 @@ export class HeadtrackerBridgeDevice extends EventEmitter {
     {
         super();
 
+        port.open();
+
         this.path   = port.path;
         this.output = new SIOutputAdapter();
         this.lhtrk  = new LocalHeadtracker(port, this.output);
@@ -249,7 +251,6 @@ export class HeadtrackerBridge {
     constructor()
     {
         this._app = express();
-
         this._app.get('headtracker')
     }
 

@@ -763,7 +763,7 @@ export class SerialHeadtracker extends SerialConnection {
             })
             .then((data) => {
                 // keep only bottom 6 bits
-                this._id = (data.readUInt8(0) & 64) - 1;
+                this._id = data.readUInt8(0);
                 log.info('Device ID: ' + this._id);
 
                 this._watchdog = setInterval(() => {
@@ -1031,6 +1031,18 @@ export class LocalHeadtracker extends Headtracker {
         //    (this._ltc.cnt <= 50) ? '(warmup)' : ''}`);
 
         setTimeout(this._ltc_run.bind(this), 30);
+    }
+
+    async setID(id: number)
+    {
+        let buf = Buffer.alloc(1);
+        buf.writeUInt8(id, 0);
+        return this.shtrk.setValue(si_gy_values.SI_GY_ID, buf);
+    }
+
+    async getID(): Promise<number>
+    {
+        return (await this.shtrk.getValue(si_gy_values.SI_GY_ID)).readUInt8(0);
     }
 
     setSamplerate(sr: number): void
