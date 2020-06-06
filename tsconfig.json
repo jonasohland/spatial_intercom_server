@@ -9,6 +9,8 @@
         "sourceMap": true,
         "outDir": "dist",
         "baseUrl": ".",
+        "composite": true,
+        "incremental": true,
         "paths": {
             "*": [
                 "node_modules/*",

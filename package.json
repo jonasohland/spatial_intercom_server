@@ -7,7 +7,8 @@
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "npm run build && node ./dist/index.js",
-    "deploy": "bin/deploy.sh"
+    "deploy": "bin/deploy.sh",
+    "develop": "tsc --watch"
   },
   "bin": {
     "si": "bin/cli.js"

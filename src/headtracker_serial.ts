@@ -19,6 +19,7 @@ import {
     HeadtrackerNetworkSettings,
     Quaternion
 } from './headtracker';
+
 import * as Logger from './log';
 import * as util from './util';
 
@@ -57,7 +58,7 @@ export class QuaternionContainer {
     }
 }
 
-export abstract class OutputAdapter {
+export abstract class OutputAdapter extends EventEmitter {
     abstract process(q: QuaternionContainer): void;
 }
 
@@ -67,10 +68,14 @@ export abstract class UDPOutputAdapter extends OutputAdapter {
     port: number;
 
     socket: dgram.Socket;
+    _cts: boolean = true;
+    _bytes_to_send: number = 0;
+    _slow: boolean = false;
 
     constructor()
     {
         super();
+        log.info("Socket created");
         this.socket = dgram.createSocket('udp4');
     }
 
@@ -82,9 +87,48 @@ export abstract class UDPOutputAdapter extends OutputAdapter {
 
     sendData(data: Buffer)
     {
-        if (!this.addr) return;
+        if (!this._cts)
+            return;
 
-        this.socket.send(data, this.port, this.addr);
+        if (!this.addr)
+            return;
+
+        this._bytes_to_send += data.length;
+
+        this.socket.send(
+            data, this.port, this.addr, (err: Error, bytes: number) => {
+                this._bytes_to_send -= bytes;
+
+                if(Math.random() < 0.01)
+                    err = new Error("lel");
+
+                if (err) {
+                    log.warn("Send error")
+                    this._bytes_to_send = 0;
+                    this.slow()
+                    this._cts = true;
+                }
+                else if (this._bytes_to_send != 0) {
+                    log.warn("Too slow" + this._bytes_to_send)
+                    this.slow();
+                }
+                else {
+                    if (this._slow)
+                        this.emit('speedup');
+                    this._cts = true;
+                }
+            });
+    }
+
+    fullspeed()
+    {
+        this._slow = false;
+    }
+
+    slow()
+    {
+        this.emit("slowdown");
+        this._slow = true;
     }
 }
 
@@ -301,7 +345,8 @@ class AVRDUDEProgrammer {
     async isInstalled(): Promise<boolean>{ return new Promise((res, rej) => {
         cp.execFile(
             this._avrdude_executable, [ '-?' ], (err, stdout, stderr) => {
-                if (err) return rej();
+                if (err)
+                    return rej();
                 let lines = stderr.split('\n');
                 log.info('Found AVRDUDE version '
                          + lines[lines.length - 2].split(' ')[2]);
@@ -373,9 +418,12 @@ function invertationToBitmask(inv: HeadtrackerInvertation)
 {
     let i = 0;
 
-    if (inv.x) i |= util.bitValue(3);
-    if (inv.y) i |= util.bitValue(4);
-    if (inv.z) i |= util.bitValue(5);
+    if (inv.x)
+        i |= util.bitValue(3);
+    if (inv.y)
+        i |= util.bitValue(4);
+    if (inv.z)
+        i |= util.bitValue(5);
 
     return i;
 }
@@ -480,7 +528,8 @@ abstract class SerialConnection extends EventEmitter {
     protected async closeSerialPort()
     {
         return new Promise((res, rej) => {
-            if (!this.serial_port.isOpen) return res();
+            if (!this.serial_port.isOpen)
+                return res();
 
             this.serial_port.close(err => {
                 if (err)
@@ -788,7 +837,8 @@ export class SerialHeadtracker extends SerialConnection {
     {
         clearInterval(this._watchdog);
 
-        if (this._req_current) this._req_current.reject('Instance destroyed');
+        if (this._req_current)
+            this._req_current.reject('Instance destroyed');
 
         while (this._rqueue.length)
             this._rqueue.shift().reject('Instance destroyed');
@@ -810,7 +860,8 @@ export class SerialHeadtracker extends SerialConnection {
 
     getValue(ty: si_gy_values, data?: Buffer): Promise<Buffer>
     {
-        if (!data) data = Buffer.alloc(si_serial_msg_lengths[ty]).fill(13);
+        if (!data)
+            data = Buffer.alloc(si_serial_msg_lengths[ty]).fill(13);
 
         log.info('Send GET ' + si_gy_values[ty]);
 
@@ -842,7 +893,8 @@ export class SerialHeadtracker extends SerialConnection {
             }
 
             req.tcnt++;
-            if (req.tcnt > 100) req.reject('Timeout');
+            if (req.tcnt > 100)
+                req.reject('Timeout');
         };
 
         req.tm = setInterval(reqfn, 120, this);
@@ -869,7 +921,8 @@ export class SerialHeadtracker extends SerialConnection {
 
         this._req_current = null;
 
-        if (this._rqueue.length) this._start_request(this._rqueue.shift());
+        if (this._rqueue.length)
+            this._start_request(this._rqueue.shift());
     }
 
     /* --------------------------------------------------------------------- */
@@ -914,12 +967,17 @@ export class LocalHeadtracker extends Headtracker {
 
     progb: Terminal.ProgressBarController;
 
-    _calib_res: ()                               => void;
-    _calib_rej: ()                               => void;
-    _calib_loops: number                         = 0;
-    _calib_target: number                        = 0;
-    _calib_step: number                          = 0;
+    _calib_res: () => void;
+    _calib_rej: () => void;
+
+    _calib_loops: number  = 0;
+    _calib_target: number = 0;
+    _calib_step: number   = 0;
+
     _calib_prog_cb: (prog: number, step: number) => void;
+
+    _req_speed: number = -1;
+    _act_speed: number = 0;
 
     _ltc:
         { results: number[], cnt?: number, done?: () => void, err?: () => void }
@@ -947,12 +1005,35 @@ export class LocalHeadtracker extends Headtracker {
             this.emit('close', err);
         });
 
+        this.output.on('slowdown', this._slowdown.bind(this));
+        this.output.on('speedup', this._speedup.bind(this));
+
         this.shtrk.on('calib', this._calibration_cb.bind(this));
+    }
+
+    _slowdown()
+    {
+        let newsr = 1 + Math.floor(this._act_speed / 2);
+        this._set_sr(newsr);
+
+        log.warn("Emitting packets to fast. Slowing down to " + newsr);
+    }
+
+    async _speedup()
+    {
+        let newsr = 1 + this._act_speed + Math.floor((this._req_speed - this._act_speed) / 4);
+
+        log.info("Speeding up to " + newsr + "/" + this._req_speed);
+
+        await this._set_sr((newsr > this._req_speed) ? this._req_speed : newsr);
+
+        if (this._act_speed == this._req_speed
+            && this.output instanceof UDPOutputAdapter)
+            this.output.fullspeed();
     }
 
     async flashNewestFirmware(nanobootloader: string): Promise<void>
     {
-
         let fwman = new FirmwareManager();
 
         await fwman.initialize();
@@ -996,7 +1077,8 @@ export class LocalHeadtracker extends Headtracker {
                 (prog + 1) / this._calib_target, this._calib_step);
 
         if ((prog + 1) == this._calib_target) {
-            if (++this._calib_step == 2) this._calib_res();
+            if (++this._calib_step == 2)
+                this._calib_res();
         }
     }
 
@@ -1045,11 +1127,36 @@ export class LocalHeadtracker extends Headtracker {
         return (await this.shtrk.getValue(si_gy_values.SI_GY_ID)).readUInt8(0);
     }
 
-    setSamplerate(sr: number): void
+    async setSamplerate(sr: number): Promise<void>
     {
-        console.log('set srate' + sr);
-        this.shtrk.setValue(si_gy_values.SI_GY_SRATE, Buffer.alloc(1, sr));
+        log.info("New speed requested: " + sr);
+    
+        if(this._req_speed = -1) {
+            this._req_speed = sr;
+            return this._set_sr(sr);
+        }
+
+        this._req_speed = sr;
+
+        if (this.output instanceof UDPOutputAdapter) {
+
+            if (this._req_speed == this._act_speed)
+                return this._set_sr(sr);
+
+            this._speedup();
+        }
+        else
+            return this._set_sr(sr);
     }
+
+    async _set_sr(sr: number)
+    {
+        log.info("Setting new speed: " + sr);
+        await this.shtrk.setValue(
+            si_gy_values.SI_GY_SRATE, Buffer.alloc(1, sr));
+        this._act_speed = sr;
+    }
+
     enableTx(): Promise<void>
     {
         return this.shtrk.setValue(
