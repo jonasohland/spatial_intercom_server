@@ -30,6 +30,15 @@ const log = Logger.get('BRIDGE');
 class SIOutputAdapter extends UDPOutputAdapter {
 
     id: number = 0;
+    _seq: number = 0;
+
+    seq()
+    {
+        if(++this._seq > 65535)
+            this._seq = 0;
+            
+        return this._seq;
+    }
 
     process(q: QuaternionContainer): void
     {
@@ -38,10 +47,10 @@ class SIOutputAdapter extends UDPOutputAdapter {
 
         if (q.float())
             this.sendData(HeadtrackerDataPacket.newPacketFromFloatLEData(
-                buffer, offset, this.id));
+                buffer, offset, this.id, this.seq()));
         else
             this.sendData(HeadtrackerDataPacket.newPackerFromInt16Data(
-                buffer, offset, this.id));
+                buffer, offset, this.id, this.seq()));
     }
 }
 

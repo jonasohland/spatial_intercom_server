@@ -87,48 +87,11 @@ export abstract class UDPOutputAdapter extends OutputAdapter {
 
     sendData(data: Buffer)
     {
-        if (!this._cts)
-            return;
-
         if (!this.addr)
             return;
 
-        this._bytes_to_send += data.length;
-
         this.socket.send(
-            data, this.port, this.addr, (err: Error, bytes: number) => {
-                this._bytes_to_send -= bytes;
-
-                if(Math.random() < 0.01)
-                    err = new Error("lel");
-
-                if (err) {
-                    log.warn("Send error")
-                    this._bytes_to_send = 0;
-                    this.slow()
-                    this._cts = true;
-                }
-                else if (this._bytes_to_send != 0) {
-                    log.warn("Too slow" + this._bytes_to_send)
-                    this.slow();
-                }
-                else {
-                    if (this._slow)
-                        this.emit('speedup');
-                    this._cts = true;
-                }
-            });
-    }
-
-    fullspeed()
-    {
-        this._slow = false;
-    }
-
-    slow()
-    {
-        this.emit("slowdown");
-        this._slow = true;
+            data, this.port, this.addr);
     }
 }
 
@@ -833,6 +796,18 @@ export class SerialHeadtracker extends SerialConnection {
             });
     }
 
+    private async _alive_check()
+    {   
+        try {
+            await this.notify(si_gy_values.SI_GY_ALIVE);
+        } catch (e) {
+            log.error("Lost connection: " + e);
+            await this.destroy();
+        }
+
+        this._watchdog = setTimeout(this._alive_check, 3000);
+    }
+
     async destroy()
     {
         clearInterval(this._watchdog);
@@ -877,7 +852,7 @@ export class SerialHeadtracker extends SerialConnection {
         });
     }
 
-    _start_request(req: HeadtrackerSerialReq)
+    private _start_request(req: HeadtrackerSerialReq)
     {
         let reqfn = () => {
             switch (req.mty) {
@@ -902,7 +877,7 @@ export class SerialHeadtracker extends SerialConnection {
         this._req_current = req;
     }
 
-    _new_request(req: HeadtrackerSerialReq)
+    private _new_request(req: HeadtrackerSerialReq)
     {
         if (!this._req_current)
             this._start_request(req);
@@ -910,7 +885,7 @@ export class SerialHeadtracker extends SerialConnection {
             this._rqueue.push(req);
     }
 
-    _end_request(data?: Buffer)
+    private _end_request(data?: Buffer)
     {
         clearInterval(this._req_current.tm);
 
@@ -944,7 +919,7 @@ export class SerialHeadtracker extends SerialConnection {
 
     onNotify(ty: si_gy_values, data: Buffer): void
     {
-        console.log('NOTIFY: ' + si_gy_values[ty]);
+        log.debug('NOTIFY: ' + si_gy_values[ty]);
     }
 
     onACK(ty: si_gy_values)
@@ -976,9 +951,6 @@ export class LocalHeadtracker extends Headtracker {
 
     _calib_prog_cb: (prog: number, step: number) => void;
 
-    _req_speed: number = -1;
-    _act_speed: number = 0;
-
     _ltc:
         { results: number[], cnt?: number, done?: () => void, err?: () => void }
     = {
@@ -1005,31 +977,7 @@ export class LocalHeadtracker extends Headtracker {
             this.emit('close', err);
         });
 
-        this.output.on('slowdown', this._slowdown.bind(this));
-        this.output.on('speedup', this._speedup.bind(this));
-
         this.shtrk.on('calib', this._calibration_cb.bind(this));
-    }
-
-    _slowdown()
-    {
-        let newsr = 1 + Math.floor(this._act_speed / 2);
-        this._set_sr(newsr);
-
-        log.warn("Emitting packets to fast. Slowing down to " + newsr);
-    }
-
-    async _speedup()
-    {
-        let newsr = 1 + this._act_speed + Math.floor((this._req_speed - this._act_speed) / 4);
-
-        log.info("Speeding up to " + newsr + "/" + this._req_speed);
-
-        await this._set_sr((newsr > this._req_speed) ? this._req_speed : newsr);
-
-        if (this._act_speed == this._req_speed
-            && this.output instanceof UDPOutputAdapter)
-            this.output.fullspeed();
     }
 
     async flashNewestFirmware(nanobootloader: string): Promise<void>
@@ -1129,24 +1077,7 @@ export class LocalHeadtracker extends Headtracker {
 
     async setSamplerate(sr: number): Promise<void>
     {
-        log.info("New speed requested: " + sr);
-    
-        if(this._req_speed = -1) {
-            this._req_speed = sr;
-            return this._set_sr(sr);
-        }
-
-        this._req_speed = sr;
-
-        if (this.output instanceof UDPOutputAdapter) {
-
-            if (this._req_speed == this._act_speed)
-                return this._set_sr(sr);
-
-            this._speedup();
-        }
-        else
-            return this._set_sr(sr);
+        return this._set_sr(sr);
     }
 
     async _set_sr(sr: number)
@@ -1154,7 +1085,6 @@ export class LocalHeadtracker extends Headtracker {
         log.info("Setting new speed: " + sr);
         await this.shtrk.setValue(
             si_gy_values.SI_GY_SRATE, Buffer.alloc(1, sr));
-        this._act_speed = sr;
     }
 
     enableTx(): Promise<void>

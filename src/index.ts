@@ -15,12 +15,15 @@ program.command('server')
 .option('-n, --node-name <node name>')
 .option('-p, --port <port>')
 .option('-z, --webserver-port <port>')
+.option('-l, --log-level <loglvl>', 'Set the log level')
 .option('--no-webserver')
+.option('--no-timecode', 'disable timecode data option')
 .action(server_mode);
 
 program.command('node')
 .option('-i, --interface <interface>', 'use this network interface')
 .option('-n, --node-name <node name>')
+.option('-D, --dsp-executable <executable>', 'specify where to look for the dsp executable')
 .option('-p, --port <port>')
 .action(node_mode);
 

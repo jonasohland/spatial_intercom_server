@@ -6,7 +6,7 @@ import * as os from 'os';
 
 import * as Logger from './log';
 
-const log = Logger.get('CFG');
+const log = Logger.get('CONFIG');
 
 const _config_path = os.userInfo().homedir + '/.spatial_intercom';
 let _config_file: any = {};

@@ -11,8 +11,9 @@ import { ShowfileManager, ShowfileTarget } from './showfiles';
 import express from 'express';
 import * as util from './util';
 import { Manager } from './vst';
+import * as tc from './timecode';
 
-const log = Logger.get('SRV');
+const log = Logger.get('SERVER');
 
 export interface SocketAndInstance {
     instance: SpatialIntercomInstance,
@@ -56,7 +57,7 @@ export class SpatialIntercomServer {
         this.server = io(45045);
         this.webif_server = io(45040);
         this.audio_device_manager = new AudioDevices.AudioDeviceManager(this.webif_server, this.instances);
-        this.inputs = new Inputs.InputManager(this.webif_server, this.audio_device_manager);
+        this.inputs = new Inputs.InputManager(this.webif_server, this.audio_device_manager, this.showfileman);
 
         this.headtracking = new Headtracking.Headtracking(33032, this.webif_server, this.showfileman, config.interface);
         this.users = new UsersManager(this.webif_server, this.inputs, this.headtracking);
@@ -65,7 +66,15 @@ export class SpatialIntercomServer {
         this.advertiser.start();
         this.webinterface_advertiser.start();
 
-        
+        this.showfileman.storeShowfile();
+
+        let tcr = new tc.TimecodeReader();
+
+        tcr.setDevice(4);
+        tcr.setChannel(7);
+        // tcr.start();
+
+        log.verbose("Stuff");
     }
 
     newInstanceFound(socket: io.Socket){

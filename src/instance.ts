@@ -8,6 +8,7 @@ import * as VST from './vst';
 import * as DSPModules from './dsp_modules'
 import * as IPC from './ipc'
 import * as Logger from './log'
+import { Timecode } from './timecode';
 
 const log    = Logger.get('MGT');
 const netlog = Logger.get('NET');
@@ -33,11 +34,12 @@ export class SpatialIntercomInstance {
     id: string;
     io: io.Socket;
     graph: DSP.Graph;
-    dsp: IPC.Connection;
+    connection: IPC.Connection;
     vst: VST.Manager;
     devices: AudioDevices.Manager;
     service_browser: mdns.Browser;
     addresses: string[];
+    tc: Timecode;
 
     constructor(nodename: string, nid: string, local: boolean, addrs: string[], dsp?: io.Socket)
     {
@@ -46,21 +48,21 @@ export class SpatialIntercomInstance {
         this.addresses = addrs;
 
         if (local)
-            this.dsp = new IPC.LocalConnection('default');
+            this.connection = new IPC.LocalConnection('default');
         else {
-            this.dsp = new IPC.RemoteConnection(dsp);
+            this.connection = new IPC.RemoteConnection(dsp);
         }
 
-        this.graph = new DSP.Graph(this.dsp);
-        this.devices = new AudioDevices.Manager(this.dsp);
-        this.vst = new VST.Manager(this.dsp);
+        this.graph = new DSP.Graph(this.connection);
+        this.devices = new AudioDevices.Manager(this.connection);
+        this.vst = new VST.Manager(this.connection);
+        this.tc = new Timecode(this.connection);
 
+        this.connection.begin();
 
-        this.dsp.begin();
-
-        this.dsp.on('connection', () => {
+        this.connection.on('connection', () => {
             this.graph.sync();
-            this.vst.refreshPluginList();
+            this.vst.waitPluginsScanned();
             this.graph.setInputNode(64);
             this.graph.setOutputNode(64);
         });

@@ -13,6 +13,16 @@
 			},
 			"label": "npm: build",
 			"detail": "tsc"
+		},
+		{
+			"type": "npm",
+			"script": "develop",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build",
+			"label": "npm: develop",
+			"detail": "tsc"
 		}
 	]
 }

@@ -37,22 +37,26 @@ export class AudioDeviceConfiguration {
 
 export interface WEBIFAudioDeviceStatus {
 
-    nodename: string, id: string,
+    nodename: string, id: string;
 
-        options: {
-            audioIns: string[],
-            audioOuts: string[],
-            samplerates: number[],
-            buffersizes: number[]
-        },
+    options: {
+        audioIns: string[],
+        audioOuts: string[],
+        samplerates: number[],
+        buffersizes: number[]
+    };
 
-        dspUse: number, latency: number,
+    dspUse: number;
+    latency: number;
 
-        audioOutputDevice: string, audioInputDevice: string,
+    audioOutputDevice: string;
+    audioInputDevice: string;
 
-        samplerate: number, buffersize: number,
+    samplerate: number;
+    buffersize: number;
 
-        dsp_on: boolean, device_open: boolean
+    dsp_on: boolean;
+    device_open: boolean;
 }
 
 export class Manager {
@@ -169,11 +173,13 @@ export class Manager {
     {
         let was_open = await this.isOpen();
 
-        if (was_open) await this.close();
+        if (was_open)
+            await this.close();
 
         let ret = await this.remote.set('samplerate', rate);
 
-        if (was_open) await this.open();
+        if (was_open)
+            await this.open();
 
         return ret;
     }
@@ -182,11 +188,13 @@ export class Manager {
     {
         let was_open = await this.isOpen();
 
-        if (was_open) await this.close();
+        if (was_open)
+            await this.close();
 
         let ret = await this.remote.set('buffersize', size);
 
-        if (was_open) await this.open();
+        if (was_open)
+            await this.open();
 
         return ret;
     }
@@ -226,7 +234,8 @@ export class Manager {
 
     async getChannelList()
     {
-        if (this.channel_list_fresh) return this.channel_list_cache;
+        if (this.channel_list_fresh)
+            return this.channel_list_cache;
 
         let channels = <{ inputs : string[], outputs : string[] }>(
                            await this.remote.request('device-channels'))
@@ -314,55 +323,53 @@ export class AudioDeviceManager extends EventEmitter {
                               });
                       });
 
-            socket.on(
-                'audiosettings.dsp.enabled',
-                (node: string, is_enabled: boolean) => {
-                    log.info('Setting new DSP Status for node ' + node + ':'
-                             + ((is_enabled) ? 'enabled' : 'disabled'));
+            socket.on('audiosettings.dsp.enabled', (node: string,
+                                                    is_enabled: boolean) => {
+                log.info('Setting new DSP Status for node ' + node + ':'
+                         + ((is_enabled) ? 'enabled' : 'disabled'));
 
-                    const confirm = (msg: IPC.Message) => {
-                        socket.emit('audiosettings.operation.done');
-                    };
-                    const do_catch = (err: Error) => {
-                        log.error(err);
-                    };
+                const confirm = (msg: IPC.Message) => {
+                    socket.emit('audiosettings.operation.done');
+                };
+                const do_catch = (err: Error) => {
+                    log.error(err);
+                };
 
-                    if (is_enabled)
-                        self.instances.find(ins => ins.instance.name == node)
-                            .instance.devices.enable()
-                            .then(confirm)
-                            .catch(do_catch);
-                    else
-                        self.instances.find(ins => ins.instance.name == node)
-                            .instance.devices.disable()
-                            .then(confirm)
-                            .catch(do_catch);
-                });
+                if (is_enabled)
+                    self.instances.find(ins => ins.instance.name == node)
+                        .instance.devices.enable()
+                        .then(confirm)
+                        .catch(do_catch);
+                else
+                    self.instances.find(ins => ins.instance.name == node)
+                        .instance.devices.disable()
+                        .then(confirm)
+                        .catch(do_catch);
+            });
 
-            socket.on(
-                'audiosettings.device.open',
-                (node: string, is_open: boolean) => {
-                    log.info('Setting device open status for node ' + node + ':'
-                             + ((is_open) ? 'enabled' : 'disabled'));
+            socket.on('audiosettings.device.open', (node: string,
+                                                    is_open: boolean) => {
+                log.info('Setting device open status for node ' + node + ':'
+                         + ((is_open) ? 'enabled' : 'disabled'));
 
-                    const confirm = (msg: IPC.Message) => {
-                        socket.emit('audiosettings.operation.done');
-                    };
-                    const do_catch = (err: Error) => {
-                        log.error(err);
-                    };
+                const confirm = (msg: IPC.Message) => {
+                    socket.emit('audiosettings.operation.done');
+                };
+                const do_catch = (err: Error) => {
+                    log.error(err);
+                };
 
-                    if (is_open)
-                        self.instances.find(ins => ins.instance.name == node)
-                            .instance.devices.open()
-                            .then(confirm)
-                            .catch(do_catch);
-                    else
-                        self.instances.find(ins => ins.instance.name == node)
-                            .instance.devices.close()
-                            .then(confirm)
-                            .catch(do_catch);
-                });
+                if (is_open)
+                    self.instances.find(ins => ins.instance.name == node)
+                        .instance.devices.open()
+                        .then(confirm)
+                        .catch(do_catch);
+                else
+                    self.instances.find(ins => ins.instance.name == node)
+                        .instance.devices.close()
+                        .then(confirm)
+                        .catch(do_catch);
+            });
 
             socket.on('audiosettings.dspuse',
                       () => { this.instances.forEach(ins => {

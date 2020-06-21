@@ -2,32 +2,169 @@ import {DepGraph} from 'dependency-graph';
 import {EventEmitter} from 'events';
 import * as fs from 'fs';
 import * as os from 'os';
+import {v4 as uuid} from 'uuid';
 
+import {showfileDir} from './files'
 import * as logger from './log';
 
-const log = logger.get("SHFILE");
+const log = logger.get('SHOWFL');
 
-function showfileDir(subdir?: string)
-{
-    return os.homedir() + '/Spatial\ Intercom' + ((subdir) ? '/' + subdir : '');
+interface ShowfileRecordData {
+    data: any;
+    name: string;
+    uid: string;
 }
 
+interface ShowfileSectionData {
+    records: ShowfileRecordData[];
+    name: string;
+    uid: string;
+}
+
+interface ShowfileTargetData {
+    name: string;
+    sections: ShowfileSectionData[];
+}
+
+interface ShowfileData {
+    sections: ShowfileSectionData[];
+    created: string;
+}
 
 export abstract class ShowfileTarget extends EventEmitter {
 
+    _sections: ShowfileSection[] = [];
+
     abstract targetName(): string;
+    abstract onEmptyShowfileCreate(s: Showfile): void;
 
     beforeShowfileLoad() {}
-    abstract onShowfileLoad(s: Showfile): void;
-    abstract onEmptyShowfileCreate(s: Showfile): void;
     afterShowfileLoad() {}
+
+    addSection(section: ShowfileSection)
+    {
+        if (this._sections.findIndex(sc => sc.showfileSectionName()
+                                           == section.showfileSectionName())
+            != -1)
+            return log.error('Will not add section '
+                             + section.showfileSectionName()
+                             + '. Section already in target');
+
+        log.debug(`Registered new section '${section.showfileSectionName()}' in module '${this.targetName()}'`);
+
+        this._sections.push(section);
+    }
+
+    doLoadShowfile(sf: Showfile)
+    {
+        this._sections.forEach(s => {
+            let data = sf.getSectionDataByName(s.showfileSectionName());
+            if (data)
+                s.restoreSection(data);
+            else
+                log.warn('No data for section ' + s.showfileSectionName());
+        });
+    }
+
+    async showfileTargetData(): Promise<ShowfileTargetData>
+    {
+        return {
+            sections: await Promise.all(this._sections.map(s => s.showfileSectionData())),
+            name: this.targetName()
+        };
+    }
+}
+
+export abstract class ShowfileRecord {
+
+    _name: string;
+    _uid: string;
+
+    constructor(name: string)
+    {
+        this._name = name;
+        this._uid = uuid();
+    }
+
+    abstract plain(): Promise<any>
+    abstract restore(data: any): void;
+
+    async doSave()
+    {
+        log.debug("Saving record '" + this._name + "'");
+        return {
+            data: await this.plain(),
+            uid: this._uid,
+            name: this._name
+        }
+    }
+}
+
+export abstract class ShowfileSection {
+
+    private _name: string;
+    private _uid: string;
+    private _records: ShowfileRecord[] = [];
+
+    constructor(name?: string)
+    {
+        if (name) {
+            this._uid     = uuid();
+            this._name    = name;
+            this._records = [];
+        }
+    }
+
+    abstract restoreSection(data: any): ShowfileRecord[]
+
+    addRecord(s: ShowfileRecord)
+    {
+        log.debug("Add new record '" + s._name + "' to section '" + this.showfileSectionName() + "'");
+        this._records.push(s);
+    }
+
+    showfileSectionName()
+    {
+        return this._name;
+    }
+
+    showfileSectionId()
+    {
+        return this._uid;
+    }
+
+    async showfileSectionData(): Promise<ShowfileSectionData>
+    {
+        log.debug("Retrieving data from showfile section '" + this._name + "'");
+        return {
+            records : await Promise.all(this._records.map(r => r.doSave())),
+            name : this._name,
+            uid : this._uid
+        };
+    }
 }
 
 export class Showfile {
 
+    _sections: ShowfileSectionData[] = [];
+    _created: string;
+
     constructor() {}
 
-    getSection(name: string) {}
+    init()
+    {
+        this._created = (new Date(Date.now())).toISOString();
+    }
+
+    getSectionDataByName(name: string): ShowfileSectionData
+    {
+        return this._sections.find(sect => name == sect.name);
+    }
+
+    getSectionById(id: string): ShowfileSectionData
+    {
+        return this._sections.find(sect => id == sect.uid);
+    }
 }
 
 export class ShowfileManager {
@@ -37,7 +174,8 @@ export class ShowfileManager {
 
     constructor()
     {
-        if (!fs.existsSync(showfileDir())) fs.mkdirSync(showfileDir());
+        if (!fs.existsSync(showfileDir()))
+            fs.mkdirSync(showfileDir());
 
         if (!fs.existsSync(showfileDir('showfiles')))
             fs.mkdirSync(showfileDir('showfiles'))
@@ -53,7 +191,7 @@ export class ShowfileManager {
 
         this.targets.push(t);
 
-        log.info("Registered new module '" + name + "'");
+        log.debug('Registered new module \'' + name + '\'');
     }
 
     createEmptyShow(name: string)
@@ -62,8 +200,17 @@ export class ShowfileManager {
         fs.writeFileSync(showfileDir(`showfiles/${name}/show.json`), '{}');
     }
 
-    loadShowfile() {
-        
+    async storeShowfile()
+    {   
+        try {
+            let data = await Promise.all(this.targets.map(tgt => tgt.showfileTargetData()));
+        } catch (err) {
+            log.error("Could not save showfile: " + err);
+        }
+    }
+
+    loadShowfile()
+    {
         let s = new Showfile();
 
         let graph = new DepGraph();
@@ -75,18 +222,16 @@ export class ShowfileManager {
 
         load_seq.forEach(tgt => {
             this.targets.find(t => t.targetName() == tgt).beforeShowfileLoad();
-        })
+        });
 
         load_seq.forEach(tgt => {
-            this.targets.find(t => t.targetName() == tgt).onShowfileLoad(s);
-        })
+            this.targets.find(t => t.targetName() == tgt).doLoadShowfile(s);
+        });
 
         load_seq.forEach(tgt => {
             this.targets.find(t => t.targetName() == tgt).afterShowfileLoad();
-        })
+        });
     }
 
-    start()
-    {
-    }
+    start() {}
 }

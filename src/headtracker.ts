@@ -321,10 +321,11 @@ export class HeadtrackerDataPacket {
         ]);
     }
 
-    toBuffer()
+    toBuffer(seq: number)
     {
         let ob = Buffer.alloc(14);
 
+        ob.writeUInt16LE(seq, 2);
         ob.writeUInt16LE(this.device_id, 4);
         ob.writeUInt16LE(this.w, 6);
         ob.writeUInt16LE(this.x, 8);
@@ -334,19 +335,20 @@ export class HeadtrackerDataPacket {
         return ob;
     }
 
-    static newPacketFromFloatLEData(b: Buffer, dataoffs: number, id: number)
+    static newPacketFromFloatLEData(b: Buffer, dataoffs: number, id: number, seq: number)
     {
         return new HeadtrackerDataPacket(id, [
             b.readFloatLE(dataoffs) * 16384,
             b.readFloatLE(dataoffs + 4) * 16384,
             b.readFloatLE(dataoffs + 8) * 16384,
             b.readFloatLE(dataoffs + 12) * 16384
-        ]).toBuffer();
+        ]).toBuffer(seq);
     }
 
-    static newPackerFromInt16Data(b: Buffer, dataoffs: number, id: number)
+    static newPackerFromInt16Data(b: Buffer, dataoffs: number, id: number, seq: number)
     {
         let ob = Buffer.alloc(14);
+        ob.writeUInt16LE(seq, 2);
         ob.writeInt16LE(id, 4);
         b.copy(ob, 6, dataoffs, dataoffs + 8);
         return ob;

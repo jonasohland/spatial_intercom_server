@@ -31,6 +31,7 @@
     "@types/socket.io-client": "^1.4.32",
     "@types/split2": "^2.1.6",
     "@types/terminal-kit": "^1.28.2",
+    "@types/uuid": "^8.0.0",
     "chalk": "^2.4.2",
     "checksum": "^0.1.1",
     "commander": "^4.0.1",
@@ -52,6 +53,7 @@
     "terminal-kit": "^1.35.2",
     "typescript": "^3.7.3",
     "usb-detection": "^4.9.0",
+    "uuid": "^8.1.0",
     "winston": "^3.2.1"
   },
   "prettier": {

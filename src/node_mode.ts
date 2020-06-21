@@ -6,6 +6,7 @@ import io from 'socket.io-client'
 import * as discovery from './discovery'
 import * as IPC from './ipc'
 import * as server_config from './server_config'
+import { SIDSPProcess } from './dsp_child_process';
 
 const local_addresses = <string[]>[];
 
@@ -29,6 +30,9 @@ export default function(options: any)
 
     const config  = server_config.merge(options);
     const browser = discovery.getServerBrowser(config.interface);
+    const dspp = new SIDSPProcess(options);
+
+    dspp.start();
 
     browser.on('serviceUp', (service: mdns.Service) => {
         let serveraddr = `ws://${service.addresses[0]}:${service.port}`

@@ -654,6 +654,11 @@ export class Graph {
     async sync()
     {
         let self = this;
+
+        console.log();
+        console.log(JSON.stringify(this._export()));
+        console.log();
+
         return new Promise<void>((resolve, reject) => {
             log.info('Syncing graph with DSP process');
 

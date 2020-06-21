@@ -38,9 +38,9 @@ export class Manager {
         });
     }
 
-    async refreshPluginList() {
+    async waitPluginsScanned() {
 
-        await this.requester.requestTmt('scan-vst', 100000);
+        await this.requester.requestTmt('wait-scanned', 60000);
 
         let list = await this.requester.request('list-vst');
     
