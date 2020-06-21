@@ -2,7 +2,7 @@ import {loggers} from 'winston';
 
 import {AudioDeviceManager, Channel} from './audio_devices';
 import * as DSP from './dsp'
-import {SpatialIntercomInstance} from './instance';
+import {SIDSPNode} from './instance';
 import * as Logger from './log';
 import {ShowfileRecord, ShowfileManager, ShowfileSection, ShowfileTarget} from './showfiles';
 
@@ -10,7 +10,7 @@ const log = Logger.get('INP');
 
 interface NodeAndInputs {
     max_id: 0;
-    si: SpatialIntercomInstance;
+    si: SIDSPNode;
     inputs: Input[];
 }
 

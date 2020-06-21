@@ -17,27 +17,30 @@ enum SIClientState {
     RECONNECTING
 };
 
-class SINodeWSConnection {
-    socket: SocketIO.Socket;
-}   
-
-class SIServerWSAdapter extends EventEmitter {
-
-    nodes: SINodeWSConnection[]
-    wsserver: SocketIO.Server;
-
-    constructor(config: any) {
-        super();
-        this.wsserver = SocketIO.listen(config.server_port)
-    }
+/**
+ * Represents a connection to a server in the Node
+ */
+class SINodeWSClient {
+    private _state: SIClientState = SIClientState.DISCONNECTED;
 }
 
-class SINodeWSAdapter extends EventEmitter {
 
-    wsclient: SocketIOClient.Socket;
+/**
+ * Represents the connection to a node in the SI server
+ */
+class SIServerWSClient {
+    private _state: SIClientState = SIClientState.DISCONNECTED;
+}
 
-    constructor() {
-        super();
-        this.wsclient = SocketIOClient.connect("");
+/**
+ * Communications server class
+ */
+class SIServerWSServer {
+
+    constructor(options: any)
+    {
+        
     }
+
+
 }

@@ -1,4 +1,4 @@
-import { SpatialIntercomInstance } from './instance';
+import { SIDSPNode } from './instance';
 import * as AudioDevices from './audio_devices'
 import * as mdns from 'dnssd';
 import io from 'socket.io'
@@ -16,7 +16,7 @@ import * as tc from './timecode';
 const log = Logger.get('SERVER');
 
 export interface SocketAndInstance {
-    instance: SpatialIntercomInstance,
+    instance: SIDSPNode,
     socket?: io.Socket,
     is_remote: boolean
 }
@@ -89,7 +89,7 @@ export class SpatialIntercomServer {
 
             log.info("New instanced registered with name: " + name);
 
-            let new_instance = new SpatialIntercomInstance(name, id, false, addresses, socket);
+            let new_instance = new SIDSPNode(name, id, false, addresses, socket);
 
             self.instances.push({
                 instance: new_instance,

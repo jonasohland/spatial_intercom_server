@@ -48,7 +48,7 @@ interface WEBIFNodesAndUsers {
 }
 
 export interface NodeAndUsers {
-    si: Instance.SpatialIntercomInstance;
+    si: Instance.SIDSPNode;
     users: User[];
 }
 
@@ -66,7 +66,7 @@ export class User {
     room_character: number;
     dspModule?: BasicUserModule;
 
-    constructor(instance: Instance.SpatialIntercomInstance, name: string)
+    constructor(instance: Instance.SIDSPNode, name: string)
     {
         this.name = name;
     }

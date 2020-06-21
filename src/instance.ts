@@ -8,7 +8,7 @@ import * as VST from './vst';
 import * as DSPModules from './dsp_modules'
 import * as IPC from './ipc'
 import * as Logger from './log'
-import { Timecode } from './timecode';
+import { TimecodeNode } from './timecode';
 
 const log    = Logger.get('MGT');
 const netlog = Logger.get('NET');
@@ -28,7 +28,7 @@ export interface InstanceNetworkInformations {
     htrk_port: string;
 }
 
-export class SpatialIntercomInstance {
+export class SIDSPNode {
 
     name: string;
     id: string;
@@ -39,7 +39,7 @@ export class SpatialIntercomInstance {
     devices: AudioDevices.Manager;
     service_browser: mdns.Browser;
     addresses: string[];
-    tc: Timecode;
+    tc: TimecodeNode;
 
     constructor(nodename: string, nid: string, local: boolean, addrs: string[], dsp?: io.Socket)
     {
@@ -56,7 +56,7 @@ export class SpatialIntercomInstance {
         this.graph = new DSP.Graph(this.connection);
         this.devices = new AudioDevices.Manager(this.connection);
         this.vst = new VST.Manager(this.connection);
-        this.tc = new Timecode(this.connection);
+        this.tc = new TimecodeNode(this.connection);
 
         this.connection.begin();
 

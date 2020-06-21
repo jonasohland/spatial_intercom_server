@@ -8,6 +8,13 @@ import { Connection, Requester } from './ipc';
 
 const log = Logger.get('TIMECD');
 
+export interface AES67TimecodeTransport {
+    samplerate: number;
+    channel: number;
+    framerate: number;
+    sdp: string;
+}
+
 export async function devices(): Promise<string[]>
 {
     return new Promise((res, rej) => {
@@ -216,75 +223,85 @@ export class TimecodeReader extends EventEmitter {
     }
 }
 
-export class Timecode {
+export class TimecodeNode {
 
     _remote: Requester;
+    _ready: boolean = false;
+    _rtp_available: boolean = false;
 
     constructor(connection: Connection)
     {
         this._remote = connection.getRequester("tc");
 
-        this._remote.connection.on("connection", () => {
-            this._remote.request("rtp-available").then(msg => {
-                console.log(msg);
-            }).catch(err => {
-                console.log(err);
-            });
+        this._remote.connection.on("connection", async () => {
+            
+            let is_available = (await this._remote.request("rtp-available")).data;
 
-            this._remote.request("from-sdp", {
+            if(typeof is_available == "boolean")
+                this._rtp_available = is_available;
+            else
+                log.warn("Unexpected response type for rtp-available");
+
+            this.start({
                 sdp: `v=0
-                o=- 49635646640 49635646640 IN IP4 192.168.0.103
+                o=- 50125618808 50125618808 IN IP4 192.168.0.103
                 s=SSL-NetIO-MADI-MM-414 : 32
-                i=2 channels: 01, 02
-                c=IN IP4 239.10.69.176/32
+                i=1 channels: 01
+                c=IN IP4 239.10.148.244/32
                 t=0 0
                 a=keywds:Dante
-                m=audio 5004 RTP/AVP 97
-                c=IN IP4 239.10.69.176/32
+                m=audio 5004 RTP/AVP 96
+                c=IN IP4 239.10.148.244/32
                 a=recvonly
-                a=rtpmap:97 L24/48000/2
+                a=rtpmap:96 L24/48000/1
                 a=ptime:1
                 a=ts-refclk:ptp=IEEE1588-2008:00-1D-C1-FF-FE-12-2D-4C:0
                 a=mediaclk:direct=641649978
                 `,
-                framerate: 25,
+                channel: 0,
                 samplerate: 48000,
-                channel: 0
+                framerate: 25
+            }).then(() => {
+                setInterval(() => {
+                    this.time().then((t) => {
+                        console.log(t);
+                    }).catch(err => {
+                        log.error(err);
+                    })
+                }, 200);
             }).catch(err => {
-                console.log(err);
-            });
+                log.error(err);
+            })
 
-            setInterval(() => {
-                this._remote.request("time").then(msg => {
-                    console.log(msg);
-                });
-            }, 5000);
-
-
-            setInterval(() => {
-                this._remote.request("from-sdp", {
-                    sdp: `v=0
-                        o=- 49635646640 49635646640 IN IP4 192.168.0.103
-                        s=SSL-NetIO-MADI-MM-414 : 32
-                        i=2 channels: 01, 02
-                        c=IN IP4 239.10.69.176/32
-                        t=0 0
-                        a=keywds:Dante
-                        m=audio 5004 RTP/AVP 97
-                        c=IN IP4 239.10.69.176/32
-                        a=recvonly
-                        a=rtpmap:97 L24/48000/2
-                        a=ptime:1
-                        a=ts-refclk:ptp=IEEE1588-2008:00-1D-C1-FF-FE-12-2D-4C:0
-                        a=mediaclk:direct=641649978
-                        `,
-                    framerate: 25,
-                    samplerate: 48000,
-                    channel: 0
-                }).catch(err => {
-                    log.error(err);
-                })
-            }, 40000);
+            this._ready = true;
         });
     }
+
+    async time(tmt?: number): Promise<string>
+    {
+        try {
+            if(tmt)
+                return this._remote.requestTypedWithTimeout("time", tmt).str();
+            else
+                return this._remote.requestTyped("time").str();
+        } catch(err) {
+            log.error("Error getting time from node: " + err);
+            return "XX:XX:XX:XX";
+        }
+    }
+
+    async start(transport: AES67TimecodeTransport)
+    {
+        return this._remote.requestTyped("start-sdp", transport).str();
+    } 
 };
+
+export class Timecode {
+    
+    _nodes: Node[];
+    
+    constructor(nodes: Node[])
+    {
+        this._nodes = nodes;
+    }
+} 

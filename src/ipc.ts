@@ -65,7 +65,7 @@ function _log_msg(msg: Message, input: boolean)
 
 function deleteLocalPipe(name: string)
 {
-    if(fs.existsSync(_pipename(name)))
+    if (fs.existsSync(_pipename(name)))
         fs.unlinkSync(_pipename(name));
 }
 
@@ -156,7 +156,8 @@ export class Message {
 
         m.data = obj.d;
 
-        if (obj.e && obj.e.length > 0) m.err = obj.e;
+        if (obj.e && obj.e.length > 0)
+            m.err = obj.e;
 
         return m;
     }
@@ -186,6 +187,66 @@ export class Message {
     }
 }
 
+export class TypedMessage {
+
+    private _p: Promise<Message>;
+
+    constructor(p: Promise<Message>)
+    {
+        this._p = p;
+    }
+
+    private _check_or_throw(ty: string, v: any)
+    {
+        if (typeof v == ty)
+            return true;
+        else
+            throw ('Unexpected message of type ' + typeof v);
+    }
+
+    async str(): Promise<string>
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('string', v))
+            return <string>v;
+    }
+
+    async bool()
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('boolean', v))
+            return <boolean><unknown>v;
+    }
+
+    async obj()
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('object', v))
+            return <object>v;
+    }
+
+    async number()
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('number', v))
+            return <number>v;
+    }
+
+    async float()
+    {
+        return this.number();
+    }
+
+    async int()
+    {
+        return Math.floor(await this.number());
+    }
+}
+
 export class Requester extends EventEmitter {
 
     request_target: string;
@@ -200,7 +261,8 @@ export class Requester extends EventEmitter {
 
         // propagate events to the listener
         this.connection.on(target, (msg: Message) => {
-            if (msg.mode == MessageMode.EVT) this.emit(msg.field);
+            if (msg.mode == MessageMode.EVT)
+                this.emit(msg.field);
         });
     }
 
@@ -209,10 +271,22 @@ export class Requester extends EventEmitter {
         return this.connection.request(this.request_target, value, 10000, data);
     }
 
+    requestTyped(value: string, data?: any)
+    {
+        return new TypedMessage(
+            this.connection.request(this.request_target, value, 10000, data));
+    }
+
     async requestTmt(value: string, timeout: number, data?: any)
     {
         return this.connection.request(
             this.request_target, value, timeout, data);
+    }
+
+    requestTypedWithTimeout(value: string, timeout: number, data?: any)
+    {
+        return new TypedMessage(
+            this.connection.request(this.request_target, value, timeout, data));
     }
 
     async set(value: string, data?: any)
@@ -220,9 +294,21 @@ export class Requester extends EventEmitter {
         return this.connection.set(this.request_target, value, 10000, data);
     }
 
+    setTyped(value: string, data?: any)
+    {
+        return new TypedMessage(
+            this.connection.set(this.request_target, value, 10000, data));
+    }
+
     async setTmt(value: string, timeout: number, data?: any)
     {
         return this.connection.set(this.request_target, value, timeout, data);
+    }
+
+    setTypedWithTimeout(value: string, timeout: number, data?: any)
+    {
+        return new TypedMessage(
+            this.connection.set(this.request_target, value, timeout, data));
     }
 };
 
@@ -232,10 +318,7 @@ export abstract class Connection extends EventEmitter {
     abstract send(msg: Message): void;
     abstract isLocal(): boolean;
 
-    async _do_request(req: boolean,
-                      tg: string,
-                      fld: string,
-                      timeout?: number,
+    async _do_request(req: boolean, tg: string, fld: string, timeout?: number,
                       data?: any): Promise<Message>
     {
         let self = this;
@@ -267,14 +350,14 @@ export abstract class Connection extends EventEmitter {
         });
     }
 
-    async request(tg: string, fld: string, timeout?: number, data?: any):
-        Promise<Message>
+    async request(tg: string, fld: string, timeout?: number,
+                  data?: any): Promise<Message>
     {
         return this._do_request(true, tg, fld, timeout, data);
     }
 
-    async set(tg: string, fld: string, timeout?: number, data?: any):
-        Promise<Message>
+    async set(tg: string, fld: string, timeout?: number,
+              data?: any): Promise<Message>
     {
         return this._do_request(false, tg, fld, timeout, data);
     }
@@ -293,7 +376,9 @@ export abstract class Connection extends EventEmitter {
         this.emit(msg.target, msg);
     }
 
-    connectionFound() {}
+    connectionFound()
+    {
+    }
 }
 
 export class LocalConnection extends Connection {
@@ -368,7 +453,6 @@ export class RemoteConnection extends Connection {
         let self = this;
 
         this.socket.on('ipc-bridge-begin', () => {
-
             self.socket.removeAllListeners();
 
             log.info('Remote DSP process connected');
@@ -417,7 +501,7 @@ export class IPCBridge extends EventEmitter {
         let self = this;
 
         this.socket.on('connect', () => {
-            log.info("Connected");
+            log.info('Connected');
             self.begin();
         });
 
@@ -425,38 +509,38 @@ export class IPCBridge extends EventEmitter {
             self.reset();
         });
 
-        this.socket.on('msg', (msg: string) => {
-            
-            let msgobj = Message.parse(msg)
-            
-            _log_msg(msgobj, true);
+        this.socket
+            .on('msg',
+                (msg: string) => {
+                    let msgobj = Message.parse(msg)
 
-            if(self.connected){
-                if(self.ipc_socket)
-                    self.ipc_socket.write(msg + '\0');
-            } else {
-                log.error("Not connected");
-                msgobj.err = "NOT CONNECTED";
-                msgobj.mode = MessageMode.RSP;
-                self.emit('msg', msg.toString())
-            }
-        })
+                    _log_msg(msgobj, true);
 
-        this.socket.on('ipc-bridge-init', () => {
+                    if (self.connected) {
+                        if (self.ipc_socket)
+                            self.ipc_socket.write(msg + '\0');
+                    }
+                    else {
+                        log.error('Not connected');
+                        msgobj.err  = 'NOT CONNECTED';
+                        msgobj.mode = MessageMode.RSP;
+                        self.emit('msg', msg.toString())
+                    }
+                })
 
-            log.info("Received IPC bridge init msg");
+                this.socket.on('ipc-bridge-init', () => {
+                    log.info('Received IPC bridge init msg');
 
-            if(self.connected)
-                self.socket.emit('ipc-bridge-begin');
-        })
+                    if (self.connected)
+                        self.socket.emit('ipc-bridge-begin');
+                })
     }
 
-    begin() 
+    begin()
     {
         let self = this;
 
         this.ipc_server = _make_pipe(this.name, (pipe) => {
-
             this.ipc_socket = pipe;
 
             pipe.pipe(split('\0')).on('data', data => {
@@ -465,7 +549,6 @@ export class IPCBridge extends EventEmitter {
             });
 
             pipe.on('close', (err: Error) => {
-
                 if (err)
                     log.warn('Local DSP process disconnected with error:  '
                              + err.message);
@@ -484,27 +567,25 @@ export class IPCBridge extends EventEmitter {
             });
 
             self.ipc_socket = pipe;
-            self.connected = true;
+            self.connected  = true;
             self.socket.emit('ipc-bridge-begin');
-
         });
     }
 
     reset()
     {
-        log.warn("Connection lost, resetting.")
+        log.warn('Connection lost, resetting.')
 
         deleteLocalPipe(this.name);
 
-        if(this.ipc_server){
+        if (this.ipc_server) {
             this.ipc_server.close();
             this.ipc_server.removeAllListeners();
         }
 
-        if(this.ipc_socket){
+        if (this.ipc_socket) {
             this.ipc_socket.end();
             this.ipc_socket.removeAllListeners();
         }
     }
-
 }
