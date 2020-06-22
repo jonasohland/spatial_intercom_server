@@ -6,6 +6,7 @@ import * as Instance from './instance';
 import * as Logger from './log';
 import { Headtracking } from './headtracking';
 import * as IP from 'ip';
+import WebInterface from './web_interface';
 
 const log = Logger.get('USR');
 
@@ -144,21 +145,21 @@ export class User {
 export class UsersManager extends EventEmitter {
 
     users: NodeAndUsers[] = [];
-    server: SocketIO.Server;
+    webif: WebInterface;
     inputs: Inputs.InputManager;
     htrks: Headtracking;
     max_id = 0;
 
-    constructor(server: SocketIO.Server, inputs: Inputs.InputManager, htrks: Headtracking)
+    constructor(webif: WebInterface, inputs: Inputs.InputManager, htrks: Headtracking)
     {
         super();
 
         let self    = this;
-        this.server = server;
+        this.webif = webif;
         this.inputs = inputs;
         this.htrks = htrks;
 
-        this.server.on('connection', socket => {
+        this.webif.io.on('connection', socket => {
             
             socket.on('users.update', () => {
                 self.updateInterface(socket);
@@ -187,9 +188,9 @@ export class UsersManager extends EventEmitter {
 
     addUser(userdata: WEBIFNewUserData)
     {
-        let ins  = this.inputs.devices.instances.find(ins => ins.instance.id
+        let ins  = this.inputs.devices.instances.find(ins => ins.id
                                                             == userdata.nodeid);
-        let user = new User(ins.instance, userdata.username);
+        let user = new User(ins, userdata.username);
 
         user.advanced       = false;
         user.inputs         = [];
@@ -199,7 +200,7 @@ export class UsersManager extends EventEmitter {
         let nodeAndUsers = this.users.find(n => n.si.id == userdata.nodeid);
 
         if (nodeAndUsers == undefined)
-            this.users.push({ si : ins.instance, users : [] });
+            this.users.push({ si : ins, users : [] });
 
         nodeAndUsers = this.users.find(n => n.si.id == userdata.nodeid);
 
@@ -207,16 +208,14 @@ export class UsersManager extends EventEmitter {
 
         let dspModule = new BasicUserModule(user);
 
-        ins.instance.graph.addModule(dspModule);
-        ins.instance.graph.sync();
+        ins.graph.addModule(dspModule);
+        ins.graph.sync();
 
-        this.updateInterface(this.server);
+        this.updateInterface(this.webif.io);
     }
 
     async updateInterface(socket: SocketIO.Server|SocketIO.Socket)
     {
-        console.log("Update Interface");
-
         let update_users: WEBIFNodesAndUsers[] = [];
         let update_aux: any[]                  = [];
 
@@ -321,7 +320,7 @@ export class UsersManager extends EventEmitter {
             }
         });
 
-        this.updateInterface(this.server);
+        this.updateInterface(this.webif.io);
     }
 
     switchSpatializationMode(usr_id: number, nid: string) {
@@ -403,8 +402,6 @@ export class UsersManager extends EventEmitter {
         let node = this.users.find(n => n.si.id == nid);
         let usr = node.users.find(us => us.id == userId);
 
-        console.log(htrkId);
-
         usr.htrk = htrkId;
 
         if(usr.dspModule)
@@ -413,10 +410,7 @@ export class UsersManager extends EventEmitter {
         let trk = this.htrks.trackers.find(htrk => htrk.remote.conf.deviceID() == htrkId);
 
         if(trk){
-            
             return (trk.setStreamDest(node.si.addresses[0], 45667));
-
-            log.error('Could not find a matching subnet for node and Headtracker');
         } else {
             log.error('Headtracker not found');
         }
@@ -426,8 +420,6 @@ export class UsersManager extends EventEmitter {
     {
         let node = this.users.find(n => n.si.id == nid);
         let usr = node.users.find(us => us.id == usr_id);
-
-        console.log("Reflections: " + value);
 
         if(!usr.advanced)
             return;
@@ -441,8 +433,6 @@ export class UsersManager extends EventEmitter {
     {
         let node = this.users.find(n => n.si.id == nid);
         let usr = node.users.find(us => us.id == usr_id);
-
-        console.log("Character: " + value);
 
         if(!usr.advanced)
             return;

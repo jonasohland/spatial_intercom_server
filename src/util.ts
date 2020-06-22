@@ -1,6 +1,9 @@
 import * as cp from 'child_process';
 import {copyFile} from 'fs';
 import * as os from 'os';
+import { IPCBridge } from './ipc';
+import { isIP } from 'net';
+import { subnet } from 'ip';
 
 export function applyMixins(derivedCtor: any, baseCtors: any[])
 {
@@ -50,6 +53,11 @@ export function localNetinfo(): Promise<{if: string, mask: number}[]>
     })
 }
 
+export function defaultIF(name?: string)
+{
+    return (name? name : "0.0.0.0"); 
+}
+
 const interfaces = os.networkInterfaces();
 const local_interfaces: os.NetworkInterfaceInfo[] = [];
 
@@ -63,3 +71,14 @@ Object.keys(interfaces).forEach(function(ifname) {
 });
 
 export const LocalInterfaces = local_interfaces;
+
+export function getMatchingLocalInterface(addr: string[])
+{
+    return LocalInterfaces.filter(ifs => {
+        addr.forEach(a => {
+            if(subnet(a, ifs.netmask) == subnet(ifs.address, ifs.netmask))
+                return true;
+        })
+        return false;
+    })
+}

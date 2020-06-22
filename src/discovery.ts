@@ -1,13 +1,13 @@
 import * as dnssd from 'dnssd'
 
-export function getWebinterfaceAdvertiser(netif?: string)
+export function getWebinterfaceAdvertiser(port: number, netif?: string)
 {
-    return new dnssd.Advertisement(dnssd.tcp('http'), 8090, { interface: netif, name: "Spatial Intercom Manager" });
+    return new dnssd.Advertisement(dnssd.tcp('http'), port, { interface: netif, name: "Spatial Intercom Manager" });
 }
 
-export function getServerAdvertiser(netif?: string) 
+export function getServerAdvertiser(port: number, netif?: string) 
 {
-    return new dnssd.Advertisement(dnssd.tcp('si-server'), 45045, { interface: netif });
+    return new dnssd.Advertisement(dnssd.tcp('si-server'), port, { interface: netif });
 }
 
 export function getServerBrowser(netif?: string) 

@@ -3,6 +3,7 @@ import * as dgram from 'dgram';
 import * as osc from 'osc-min';
 import SerialPort from 'serialport';
 import {terminal} from 'terminal-kit';
+import WebInterface from './web_interface';
 
 import {
     IEMOutputAdapter,
@@ -225,8 +226,7 @@ function runLatencyTest(p: SerialPort, options: any) {
 }
 
 function runNormalMode(p: SerialPort, options: any) {
-    let wss          = io(45040);
-    let headtracking = new Headtracking(8887, wss, sfman);
+    let headtracking = new Headtracking(new WebInterface(options), sfman);
 
     if (options.oscControl)
         new OSCController(headtracking, options);

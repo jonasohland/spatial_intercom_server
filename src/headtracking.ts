@@ -14,6 +14,7 @@ import { Headtracker,
         HeadtrackerConfigPacket} from './headtracker'
 
 import { ShowfileTarget, Showfile, ShowfileManager } from './showfiles';
+import WebInterface from './web_interface';
 
 // import mkbonjour, { Bonjour, Browser } from 'bonjour-hap';
 
@@ -40,14 +41,14 @@ export class Headtracking extends ShowfileTarget {
 
     saved_htrk_data: HeadtrackerConfigPacket[];
 
-    server: SocketIO.Server;
+    webif: WebInterface;
 
-    constructor(port: number, interf: SocketIO.Server, man: ShowfileManager, netif?: string)
+    constructor(interf: WebInterface, man: ShowfileManager, netif?: string)
     {
         super();
 
         this.local_interface = netif;
-        this.server          = interf;
+        this.webif          = interf;
 
         this.browser = new dnssd.Browser(dnssd.udp('_htrk'), {
             interface : netif,
@@ -62,7 +63,7 @@ export class Headtracking extends ShowfileTarget {
 
         man.register(this);
 
-        this.server.on('connection', socket => {
+        this.webif.io.on('connection', socket => {
             socket.on('htrk.update.req', () => {
                 self.updateRemote(socket);
             })
@@ -112,7 +113,7 @@ export class Headtracking extends ShowfileTarget {
 
         console.log(service);
 
-        let htrk = new NetworkHeadtracker(this.server,
+        let htrk = new NetworkHeadtracker(this.webif,
                                    id,
                                    service.addresses[0],
                                    service.port,
@@ -137,7 +138,7 @@ export class Headtracking extends ShowfileTarget {
         this.trackers.push(trk);
 
         log.info("Add Headtracker at " + address);
-        this.server.emit('htrk.connected', id, address);
+        this.webif.io.emit('htrk.connected', id, address);
     }
 
     serviceRemoved(service: dnssd.Service) {}
@@ -189,6 +190,6 @@ export class Headtracking extends ShowfileTarget {
         if (socket)
             socket.emit('htrk.update', tracker_update);
         else
-            this.server.emit('htrk.update', tracker_update);
+            this.webif.io.emit('htrk.update', tracker_update);
     }
 }

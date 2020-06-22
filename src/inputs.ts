@@ -5,6 +5,7 @@ import * as DSP from './dsp'
 import {SIDSPNode} from './instance';
 import * as Logger from './log';
 import {ShowfileRecord, ShowfileManager, ShowfileSection, ShowfileTarget} from './showfiles';
+import WebInterface from './web_interface';
 
 const log = Logger.get('INP');
 
@@ -87,9 +88,9 @@ export class InputManager extends ShowfileTarget {
 
     nodes: NodeAndInputs[];
     devices: AudioDeviceManager;
-    server: SocketIO.Server;
+    webif: WebInterface;
 
-    constructor(io: SocketIO.Server, audioDevMan: AudioDeviceManager, sfm: ShowfileManager)
+    constructor(webif: WebInterface, audioDevMan: AudioDeviceManager, sfm: ShowfileManager)
     {
         super();
 
@@ -98,11 +99,11 @@ export class InputManager extends ShowfileTarget {
         this.devices = audioDevMan;
         this.nodes   = [];
 
-        this.server = io;
+        this.webif = webif;
 
         sfm.register(this);
 
-        io.on('connection', socket => {
+        webif.io.on('connection', socket => {
             socket.on('inputs.update',
                       () => { self.updateInterface(socket).catch(err => {
                           console.log(err);
@@ -131,8 +132,7 @@ export class InputManager extends ShowfileTarget {
     async addInput(input: any)
     {
         let ins = this.devices.instances
-                      .find(ins => ins.instance.id == input.nodeid)
-                      .instance;
+                      .find(ins => ins.id == input.nodeid);
 
         let chlist = await ins.devices.getChannelList();
 
@@ -160,6 +160,6 @@ export class InputManager extends ShowfileTarget {
 
         nodeAndInput.inputs.push(i);
 
-        this.updateInterface(this.server);
+        this.updateInterface(this.webif.io);
     }
 }

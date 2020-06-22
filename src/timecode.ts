@@ -5,6 +5,7 @@ import * as readline from 'readline';
 import * as Logger from './log';
 import { SIGINT } from 'constants';
 import { Connection, Requester } from './ipc';
+import { SIDSPNode } from './instance';
 
 const log = Logger.get('TIMECD');
 
@@ -298,9 +299,9 @@ export class TimecodeNode {
 
 export class Timecode {
     
-    _nodes: Node[];
+    _nodes: SIDSPNode[];
     
-    constructor(nodes: Node[])
+    constructor(nodes: SIDSPNode[])
     {
         this._nodes = nodes;
     }

@@ -13,6 +13,7 @@ import { Headtracker,
     HeadtrackerStateFlags, 
     HeadtrackerConfigPacket 
 } from './headtracker'
+import WebInterface from './web_interface';
 
 
 enum HTRKDevState {
@@ -55,9 +56,9 @@ export class NetworkHeadtracker extends Headtracker {
     check_alive_timeout: NodeJS.Timeout;
 
     socket: Socket;
-    server: SocketIO.Server;
+    webif: WebInterface;
 
-    constructor(server: SocketIO.Server,
+    constructor(server: WebInterface,
                 id: number,
                 addr: string,
                 port: number,
@@ -76,7 +77,7 @@ export class NetworkHeadtracker extends Headtracker {
         this.local.netif = netif;
 
         this.socket = createDgramSocket('udp4');
-        this.server = server;
+        this.webif = server;
 
         this.socket.on('close', this._onClose.bind(this));
         this.socket.on('error', this._onError.bind(this));
@@ -136,7 +137,7 @@ export class NetworkHeadtracker extends Headtracker {
 
             if (this._state() == HTRKDevState.TIMEOUT) {
 
-                this.server.emit('htrk.reconnected', p.deviceID());
+                this.webif.io.emit('htrk.reconnected', p.deviceID());
                 log.info(`Headtracker ${p.deviceID()} reconnected`);
 
                 this._setState(HTRKDevState.BUSY);
@@ -156,7 +157,7 @@ export class NetworkHeadtracker extends Headtracker {
                  * The current configuration was saved to the device
                  * @event Headtracker#saved
                  */
-                this.server.emit('htrk.saved', this.remote.conf.deviceID());
+                this.webif.io.emit('htrk.saved', this.remote.conf.deviceID());
                 this._updateRemote();
 
                 return this._updateDeviceNow();
@@ -195,7 +196,7 @@ export class NetworkHeadtracker extends Headtracker {
             log.info('Headtracking unit timed out');
 
             this._setState(HTRKDevState.TIMEOUT);
-            this.server.emit(
+            this.webif.io.emit(
                 'htrk.disconnected',
                 (this.remote.conf) ? this.remote.conf.deviceID() : 'unknown');
             this._updateRemote();
@@ -235,7 +236,7 @@ export class NetworkHeadtracker extends Headtracker {
                     rdy : m.isStateFlagSet(HeadtrackerStateFlags.GY_RDY)
                 };
 
-                this.server.emit('htrk.gyro.changed', msg);
+                this.webif.io.emit('htrk.gyro.changed', msg);
             }
         }
 

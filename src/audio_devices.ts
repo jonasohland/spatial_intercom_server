@@ -5,6 +5,8 @@ import io from 'socket.io'
 import * as IPC from './ipc'
 import * as Logger from './log'
 import {SocketAndInstance} from './server'
+import { SIDSPNode } from './instance';
+import WebInterface from './web_interface';
 
 const log = Logger.get('DEV');
 
@@ -263,17 +265,17 @@ export class Manager {
 
 export class AudioDeviceManager extends EventEmitter {
 
-    server: io.Server;
-    instances: SocketAndInstance[];
+    webif: io.Server;
+    instances: SIDSPNode[];
 
-    constructor(server: io.Server, instances: SocketAndInstance[])
+    constructor(server: WebInterface, instances: SIDSPNode[])
     {
         super();
 
         let self       = this;
         this.instances = instances;
 
-        server.on('connection', (socket: io.Socket) => {
+        server.io.on('connection', (socket: io.Socket) => {
             socket.on('audiosettings.update',
                       this.handleUpdateRequest.bind(self, socket));
 
@@ -282,8 +284,8 @@ export class AudioDeviceManager extends EventEmitter {
                           log.info('New input device requested for node ' + node
                                    + ': ' + device);
 
-                          self.instances.find(ins => ins.instance.name == node)
-                              .instance.devices.setInputDevice(device)
+                          self.instances.find(ins => ins.name == node)
+                              .devices.setInputDevice(device)
                               .then(() => {
                                   console.log('device set.');
                                   socket.emit('audiosettings.operation.done');
@@ -294,8 +296,8 @@ export class AudioDeviceManager extends EventEmitter {
                       (node: string, device: string) => {
                           log.info('New output device requested for node '
                                    + node + ': ' + device);
-                          self.instances.find(ins => ins.instance.name == node)
-                              .instance.devices.setOutputDevice(device)
+                          self.instances.find(ins => ins.name == node)
+                              .devices.setOutputDevice(device)
                               .then(() => {
                                   socket.emit('audiosettings.operation.done');
                               });
@@ -305,8 +307,8 @@ export class AudioDeviceManager extends EventEmitter {
                       (node: string, buffersize: number) => {
                           log.info('New buffersize requested for node ' + node
                                    + ': ' + buffersize);
-                          self.instances.find(ins => ins.instance.name == node)
-                              .instance.devices.setBuffersize(buffersize)
+                          self.instances.find(ins => ins.name == node)
+                              .devices.setBuffersize(buffersize)
                               .then(() => {
                                   socket.emit('audiosettings.operation.done');
                               });
@@ -316,8 +318,8 @@ export class AudioDeviceManager extends EventEmitter {
                       (node: string, samplerate: number) => {
                           log.info('New samplerate requested for node ' + node
                                    + ': ' + samplerate);
-                          self.instances.find(ins => ins.instance.name == node)
-                              .instance.devices.setSamplerate(samplerate)
+                          self.instances.find(ins => ins.name == node)
+                              .devices.setSamplerate(samplerate)
                               .then(() => {
                                   socket.emit('audiosettings.operation.done');
                               });
@@ -336,13 +338,13 @@ export class AudioDeviceManager extends EventEmitter {
                 };
 
                 if (is_enabled)
-                    self.instances.find(ins => ins.instance.name == node)
-                        .instance.devices.enable()
+                    self.instances.find(ins => ins.name == node)
+                        .devices.enable()
                         .then(confirm)
                         .catch(do_catch);
                 else
-                    self.instances.find(ins => ins.instance.name == node)
-                        .instance.devices.disable()
+                    self.instances.find(ins => ins.name == node)
+                        .devices.disable()
                         .then(confirm)
                         .catch(do_catch);
             });
@@ -360,24 +362,24 @@ export class AudioDeviceManager extends EventEmitter {
                 };
 
                 if (is_open)
-                    self.instances.find(ins => ins.instance.name == node)
-                        .instance.devices.open()
+                    self.instances.find(ins => ins.name == node)
+                        .devices.open()
                         .then(confirm)
                         .catch(do_catch);
                 else
-                    self.instances.find(ins => ins.instance.name == node)
-                        .instance.devices.close()
+                    self.instances.find(ins => ins.name == node)
+                        .devices.close()
                         .then(confirm)
                         .catch(do_catch);
             });
 
             socket.on('audiosettings.dspuse',
                       () => { this.instances.forEach(ins => {
-                          ins.instance.devices.refreshDSPLoad()
+                          ins.devices.refreshDSPLoad()
                               .then(() => {
                                   socket.emit('audiosettings.dspuse', {
-                                      id : ins.instance.id,
-                                      value : ins.instance.devices.status.dspUse
+                                      id : ins.id,
+                                      value : ins.devices.status.dspUse
                                   });
                               })
                               .catch(err => log.error(err));
@@ -398,16 +400,15 @@ export class AudioDeviceManager extends EventEmitter {
 
     async refreshAllDevices()
     {
-
         await Promise.all(
-            this.instances.map(ins => ins.instance.devices.refresh()))
+            this.instances.map(ins => ins.devices.refresh()))
 
         return this.instances.map(ins => {
-            console.log(ins.instance.name);
+            console.log(ins.name);
 
-            let status      = ins.instance.devices.status;
-            status.nodename = ins.instance.name;
-            status.id       = ins.instance.id;
+            let status      = ins.devices.status;
+            status.nodename = ins.name;
+            status.id       = ins.id;
 
             return status;
         });
@@ -418,8 +419,8 @@ export class AudioDeviceManager extends EventEmitter {
         return Promise.all(this.instances.map(async function(ins) {
             return <NodeAndChannels>
             {
-                id: ins.instance.id, name: ins.instance.name,
-                    channels: await ins.instance.devices.getChannelList()
+                id: ins.id, name: ins.name,
+                    channels: await ins.devices.getChannelList()
             }
         }));
     }

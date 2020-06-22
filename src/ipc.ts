@@ -137,7 +137,6 @@ export class Message {
 
     static parse(data: string): Message
     {
-
         const obj = <any>JSON.parse(data);
 
         const checkValue = (v: any, name: string) => {
@@ -149,7 +148,7 @@ export class Message {
         checkValue(obj.f, 'field');
         checkValue(obj.m, 'mode');
 
-        // we do not require a data field any more
+        // we do not require a data field anymore
         // checkValue(obj.d, 'data');
 
         const m = new Message(obj.t, obj.f, obj.m);
@@ -187,7 +186,7 @@ export class Message {
     }
 }
 
-export class TypedMessage {
+export class TypedMessagePromise {
 
     private _p: Promise<Message>;
 
@@ -273,7 +272,7 @@ export class Requester extends EventEmitter {
 
     requestTyped(value: string, data?: any)
     {
-        return new TypedMessage(
+        return new TypedMessagePromise(
             this.connection.request(this.request_target, value, 10000, data));
     }
 
@@ -285,7 +284,7 @@ export class Requester extends EventEmitter {
 
     requestTypedWithTimeout(value: string, timeout: number, data?: any)
     {
-        return new TypedMessage(
+        return new TypedMessagePromise(
             this.connection.request(this.request_target, value, timeout, data));
     }
 
@@ -296,7 +295,7 @@ export class Requester extends EventEmitter {
 
     setTyped(value: string, data?: any)
     {
-        return new TypedMessage(
+        return new TypedMessagePromise(
             this.connection.set(this.request_target, value, 10000, data));
     }
 
@@ -307,7 +306,7 @@ export class Requester extends EventEmitter {
 
     setTypedWithTimeout(value: string, timeout: number, data?: any)
     {
-        return new TypedMessage(
+        return new TypedMessagePromise(
             this.connection.set(this.request_target, value, timeout, data));
     }
 };
