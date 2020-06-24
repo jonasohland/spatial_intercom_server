@@ -12,11 +12,16 @@ const log = Logger.get('CONFIG');
 const _config_path = os.userInfo().homedir + '/.spatial_intercom';
 let _config_file: any = {};
 
-export function loadServerConfigFile() {
+export function loadServerConfigFile(config_file?: string) {
 
-    if (fs.existsSync(_config_path)) {
+    let configfile = config_file || _config_path
+
+    if (fs.existsSync(configfile)) {
         log.info('Loading configuration file from ' + _config_path);
         _config_file = ini.parse(fs.readFileSync(_config_path).toString());
+    } else 
+    {
+        log.warn("No config file found at " + configfile);
     }
 }
 
@@ -38,8 +43,6 @@ function getInterface(option: string, interfaces: any)
     else
         log.error('Could not find network interface ' + option);
 }
-
-function parseWebserverOptions() {}
 
 export function merge(cmd_opts: commander.Command)
 {

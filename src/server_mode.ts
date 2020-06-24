@@ -7,6 +7,6 @@ export default function(options: any) {
     if(options.logLevel != null)
         log.setLogLVL(options.logLevel);
 
-    server_config.loadServerConfigFile();
+    server_config.loadServerConfigFile(options.config);
     const server = new SpatialIntercomServer(server_config.merge(options));
 }

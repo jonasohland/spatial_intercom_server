@@ -38,8 +38,12 @@ export abstract class ShowfileTarget extends EventEmitter {
     abstract targetName(): string;
     abstract onEmptyShowfileCreate(s: Showfile): void;
 
-    beforeShowfileLoad() {}
-    afterShowfileLoad() {}
+    beforeShowfileLoad()
+    {
+    }
+    afterShowfileLoad()
+    {
+    }
 
     addSection(section: ShowfileSection)
     {
@@ -50,7 +54,8 @@ export abstract class ShowfileTarget extends EventEmitter {
                              + section.showfileSectionName()
                              + '. Section already in target');
 
-        log.debug(`Registered new section '${section.showfileSectionName()}' in module '${this.targetName()}'`);
+        log.debug(`Registered new section '${
+            section.showfileSectionName()}' in module '${this.targetName()}'`);
 
         this._sections.push(section);
     }
@@ -69,8 +74,9 @@ export abstract class ShowfileTarget extends EventEmitter {
     async showfileTargetData(): Promise<ShowfileTargetData>
     {
         return {
-            sections: await Promise.all(this._sections.map(s => s.showfileSectionData())),
-            name: this.targetName()
+            sections : await Promise.all(
+                this._sections.map(s => s.showfileSectionData())),
+            name : this.targetName()
         };
     }
 }
@@ -83,20 +89,20 @@ export abstract class ShowfileRecord {
     constructor(name: string)
     {
         this._name = name;
-        this._uid = uuid();
+        this._uid  = uuid();
     }
 
-    abstract plain(): Promise<any>
+    abstract plain(): Promise<any>;
     abstract restore(data: any): void;
 
     async doSave()
     {
-        log.debug("Saving record '" + this._name + "'");
+        log.debug('Saving record \'' + this._name + '\'');
         return {
-            data: await this.plain(),
-            uid: this._uid,
-            name: this._name
-        }
+            data : await this.plain(),
+            uid : this._uid,
+            name : this._name
+        };
     }
 }
 
@@ -119,7 +125,8 @@ export abstract class ShowfileSection {
 
     addRecord(s: ShowfileRecord)
     {
-        log.debug("Add new record '" + s._name + "' to section '" + this.showfileSectionName() + "'");
+        log.debug('Add new record \'' + s._name + '\' to section \''
+                  + this.showfileSectionName() + '\'');
         this._records.push(s);
     }
 
@@ -135,7 +142,8 @@ export abstract class ShowfileSection {
 
     async showfileSectionData(): Promise<ShowfileSectionData>
     {
-        log.debug("Retrieving data from showfile section '" + this._name + "'");
+        log.debug('Retrieving data from showfile section \'' + this._name
+                  + '\'');
         return {
             records : await Promise.all(this._records.map(r => r.doSave())),
             name : this._name,
@@ -149,7 +157,9 @@ export class Showfile {
     _sections: ShowfileSectionData[] = [];
     _created: string;
 
-    constructor() {}
+    constructor()
+    {
+    }
 
     init()
     {
@@ -201,11 +211,13 @@ export class ShowfileManager {
     }
 
     async storeShowfile()
-    {   
+    {
         try {
-            let data = await Promise.all(this.targets.map(tgt => tgt.showfileTargetData()));
-        } catch (err) {
-            log.error("Could not save showfile: " + err);
+            let data = await Promise.all(
+                this.targets.map(tgt => tgt.showfileTargetData()));
+        }
+        catch (err) {
+            log.error('Could not save showfile: ' + err);
         }
     }
 
@@ -233,5 +245,7 @@ export class ShowfileManager {
         });
     }
 
-    start() {}
+    start()
+    {
+    }
 }

@@ -9,7 +9,7 @@ import split from 'split2'
 import {InstanceID} from './instance'
 import * as Logger from './log'
 
-const log = Logger.get('PIP');
+const log = Logger.get('ICPIPE');
 
 function isNull(v: any)
 {
@@ -48,25 +48,72 @@ function _make_pipe(name: string, callback: (sock: Net.Socket) => void)
     return server;
 }
 
-function _log_msg(msg: Message, input: boolean)
+export function _log_msg(msg: Message, input: boolean, forward: boolean = true)
 {
 
     let to_from = input ? ' TO ' : 'FROM';
 
+    let target = forward ?  'DSP' : 'NODE_CONTROLLER'
+
     let ty = MessageMode[msg.mode];
 
     if (_.isObjectLike(msg.data))
-        log.verbose(`Msg ${to_from} DSP: [${msg.target} -> ${msg.field}] [${
+        log.verbose(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
             ty}] -> [data truncated]`);
     else
-        log.verbose(`Msg ${to_from} DSP: [${msg.target} -> ${msg.field}] [${
-            ty}] -> ${msg.data}`);
+        log.verbose(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
+            ty}] -> ${msg.data}${msg.err?`: ${msg.err}`:""}`);
 }
 
 function deleteLocalPipe(name: string)
 {
     if (fs.existsSync(_pipename(name)))
         fs.unlinkSync(_pipename(name));
+}
+
+export class IPCServer extends EventEmitter {
+    
+    _name: string;
+    _server: Net.Server;
+    _pipe: Net.Socket;
+    
+    constructor(name: string = 'default') {
+        super();
+        this._create_server(name);
+    }
+
+    _create_server(name: string)
+    {
+        this._name = name;
+        this._server = _make_pipe(this._name, pipe => {
+
+            log.info("Established connection to local dsp process")
+
+            this._pipe = pipe;
+            this._server.close();
+
+            // split incoming data at null terminators and process messages
+            this._pipe.pipe(split('\0')).on('data', this._on_msg.bind(this));
+            
+            this._pipe.on('close', had_err => {
+                log.warn('Local pipe broke. Cleaning up.')
+                this._create_server(this._name);
+                this._pipe = null;
+            })
+        });
+    }
+
+    _on_msg(msg: string)
+    {
+        this.emit('data', msg);
+    }
+
+    send(msg: string)
+    {
+        // Send a null terminated string. This is ugly, but it works for now...
+        if(this._pipe)
+            this._pipe.write(msg + '\0');
+    }
 }
 
 export class Message {

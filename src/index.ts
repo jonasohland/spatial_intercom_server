@@ -16,6 +16,7 @@ program.command('server')
 .option('-p, --port <port>')
 .option('-z, --webserver-port <port>')
 .option('-l, --log-level <loglvl>', 'Set the log level')
+.option('-c, --config <config_file>', 'load this config file instead of the default one')
 .option('--no-webserver')
 .option('--no-timecode', 'disable timecode data option')
 .action(server_mode);
@@ -25,6 +26,7 @@ program.command('node')
 .option('-n, --node-name <node name>')
 .option('-D, --dsp-executable <executable>', 'specify where to look for the dsp executable')
 .option('-p, --port <port>')
+.option('-c, --config <config_file>', 'load this config file instead of the default one')
 .action(node_mode);
 
 program.command('headtracker [serialport]')

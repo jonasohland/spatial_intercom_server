@@ -15,7 +15,7 @@ import * as util from './util';
 import {Manager} from './vst';
 import WebInterface from './web_interface';
 import { TcpSocketConnectOpts } from 'net';
-import { SIServerWSServer } from './communication';
+import { SIServerWSServer, SIServerWSSession } from './communication';
 
 const log = Logger.get('SERVER');
 
@@ -61,5 +61,22 @@ export class SpatialIntercomServer {
             this.webif, this.inputs, this.headtracking);
 
         this.sisrv = new SIServerWSServer(config);
+
+        this.sisrv.on('new-connection', (connection: SIServerWSSession) => {
+            connection.on('online', () => {
+                log.info("Online :)")
+
+                let req = connection.getRequester('node-controller');
+
+                req.request('is-started').then(() => {
+                    log.info('dsp is online!');
+                })
+
+            });
+
+            connection.on('offline', () => {
+                log.info("Offline :(")
+            })
+        })
     }
 }

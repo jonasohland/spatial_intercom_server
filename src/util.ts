@@ -82,3 +82,8 @@ export function getMatchingLocalInterface(addr: string[])
         return false;
     })
 }
+
+export function ignore(...any: any)
+{
+    // do nothing (magical.....)
+}

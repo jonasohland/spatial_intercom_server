@@ -3,14 +3,33 @@ import { Interface as ReadLineInterface, createInterface } from 'readline';
 import * as Logger from './log';
 import * as os from 'os';
 import * as fs from 'fs';
-import { Options } from 'dnssd';
+import { SIServerWSSession, NodeMessageInterceptor } from './communication'
+import { Message } from './ipc';
+import { ignore } from './util';
 
 const log = Logger.get("DSPROC");
 
-export class SIDSPProcess {
+export class SIDSPProcess extends NodeMessageInterceptor {
+
+    target(): string {
+        return "node-controller";
+    }
+
+    async handleMessage(msg: Message, from_ipc: boolean) {
+        if(from_ipc) {
+            ignore(log.error("Received a message from IPC. Thats not what we signed up for."));
+            throw "Unexpected message";
+        }
+
+        switch(msg.field) {
+            default: 
+                throw "Unknown message";
+        }
+    }
 
     constructor(options: any)
     {
+        super();
         this._exec_location = options.dspExecutable;
     }
 
@@ -81,4 +100,19 @@ export class SIDSPProcess {
     private _stdout_rl: ReadLineInterface;
     private _stderr_rl: ReadLineInterface;
     private _cp: ChildProcess;
+}
+
+export class RemoteDSPProcess {
+
+    _session: SIServerWSSession;
+
+    constructor(session: SIServerWSSession)
+    {
+        this._session = session;
+    }
+
+    async restart()
+    {
+
+    }
 }

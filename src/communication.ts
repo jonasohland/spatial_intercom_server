@@ -1,13 +1,16 @@
+import {createHash} from 'crypto';
 import * as mdns from 'dnssd';
+import {EventEmitter} from 'events';
 import * as http from 'http';
+import {machineIdSync} from 'node-machine-id';
 import SocketIO from 'socket.io';
 import SocketIOClient from 'socket.io-client';
 
 import {getServerAdvertiser, getServerBrowser} from './discovery';
+import {_log_msg, Connection, IPCServer, Message} from './ipc';
 import * as Logger from './log';
 import {defaultIF} from './util';
-import { createHash } from 'crypto';
-import { machineIdSync } from 'node-machine-id';
+
 
 const log = Logger.get('WSCOMM');
 
@@ -19,17 +22,16 @@ const log = Logger.get('WSCOMM');
 function unique_node_id(name: string)
 {
     let idstring = machineIdSync();
-    return createHash('sha1').update(`${idstring}-${name}`).digest("base64");
+    return createHash('sha1').update(`${idstring}-${name}`).digest('base64');
 }
 
-interface NodeIdentification {
+export interface NodeIdentification {
     id: string, name: string
 }
 
 enum SISessionState {
     OFFLINE,
     CONNECT_NODE,
-    WAIT_DSP,
     ONLINE,
     RECONNECTING
 }
@@ -38,19 +40,23 @@ enum SIClientState {
     OFFLINE,
     CONNECTING,
     WAIT_SERVER,
-    CHECK_DSP,
     ONLINE,
     RECONNECTING
 }
 
 const SIClientEvents = {
     EXCHANGE_IDS : '__exchange_id',
-    DSP_ONLINE : '__dsp_online'
+    DSP_ONLINE : '__dsp_online',
 };
 
 const SISessionEvents = {
-    CHECK_DSP : '__check_dsp'
-};
+    ACK : '__ack',
+}
+
+export abstract class NodeMessageInterceptor {
+    abstract target(): string;
+    abstract async handleMessage(msg: Message, from_ipc: boolean): Promise<any>;
+}
 
 /**
  * Represents a connection to a server in the Node
@@ -61,15 +67,23 @@ export class SINodeWSClient {
     private _sock: SocketIOClient.Socket;
     private _new_socks: SocketIOClient.Socket[] = [];
     private _id: NodeIdentification;
+    private _ws_interceptors: Record<string, NodeMessageInterceptor>  = {};
+    private _ipc_interceptors: Record<string, NodeMessageInterceptor> = {};
+    private _ipc: IPCServer;
 
-    constructor(config: any)
+    constructor(config: any, ipc: IPCServer)
     {
+        this._ipc = ipc;
+
+        this._ipc.on('data', this._on_ipc_msg.bind(this));
+
         this._id = {
-            name: config.node_name,
-            id: unique_node_id(config.node_name)
-        }
+            name : config.node_name,
+            id : unique_node_id(config.node_name)
+        };
 
         log.info(`Browsing for si-servers on ${defaultIF(config.interface)}`);
+
         this._browser = getServerBrowser(config.interface);
         this._browser.on('serviceUp', this._on_service_discovered.bind(this));
         this._browser.start();
@@ -80,9 +94,9 @@ export class SINodeWSClient {
         log.info('Discovered new \'si-server\' service with:');
 
         for (let addr of service.addresses)
-            log.info('  addr: ' + addr)
+            log.info('  addr: ' + addr);
 
-            log.info('and port ' + service.port);
+        log.info('and port ' + service.port);
         log.info('Full name: ' + service.fullname);
 
         switch (this._state) {
@@ -106,38 +120,42 @@ export class SINodeWSClient {
 
             let newsock = SocketIOClient(uri);
             newsock.on('connect', this._on_socket_connect.bind(this, newsock));
-            newsock.on('close', this._on_temp_close.bind(this, newsock));
+            newsock.on('close', this._on_temp_socket_close.bind(this, newsock));
 
             this._new_socks.push(newsock);
-        }   
-        
+        }
+
         this._state = SIClientState.CONNECTING
     }
 
     _service_reconnect(service: mdns.Service)
     {
-        if(this._sock)
+        if (this._sock)
             this._sock.close();
 
-        this._sock = null;
+        this._sock  = null;
         this._state = SIClientState.CONNECTING;
         this._service_connect(service);
     }
 
     _on_socket_connect(socket: SocketIOClient.Socket)
     {
-        log.info("Socket connected");
-        
+        log.info('Socket connected');
+
         if (this._state == SIClientState.CONNECTING) {
             this._sock
                 = this._new_socks.splice(this._new_socks.indexOf(socket), 1)[0];
 
-            this._sock.on(SISessionEvents.CHECK_DSP, this._on_check_dsp.bind(this));
             this._sock.on('disconnect', this._on_socket_close.bind(this));
+
+            this._sock.on('msg', this._on_msg.bind(this));
 
             this._sock.emit(SIClientEvents.EXCHANGE_IDS, this._id);
             this._state = SIClientState.WAIT_SERVER;
-        } else if (this._state == SIClientState.RECONNECTING) {
+
+            this._sock.on(SISessionEvents.ACK, this._on_ack.bind(this));
+        }
+        else if (this._state == SIClientState.RECONNECTING) {
             this._sock.emit(SIClientEvents.EXCHANGE_IDS, this._id);
             this._state = SIClientState.WAIT_SERVER;
         }
@@ -147,15 +165,15 @@ export class SINodeWSClient {
         }
     }
 
-    _on_check_dsp()
+    _on_ack()
     {
-        log.info("Got CHECK_DSP message");
-        this._sock.emit(SIClientEvents.DSP_ONLINE, true);
+        log.info('Received ACK from server. We are online!');
+        this._state = SIClientState.ONLINE;
     }
 
     _on_socket_close(reason: string)
     {
-        log.info("Connection lost. Reason: " + reason);
+        log.info('Connection lost. Reason: ' + reason);
 
         this._state = SIClientState.RECONNECTING;
 
@@ -163,13 +181,89 @@ export class SINodeWSClient {
             this._sock.connect();
     }
 
-    _on_temp_close(socket: SocketIOClient.Socket, reason: string)
+    _on_temp_socket_close(socket: SocketIOClient.Socket, reason: string)
     {
         let idx = this._new_socks.findIndex(s => s === socket);
-        if(idx != -1) {
+        if (idx != -1) {
             log.info(`Remove temp connection ${reason}`);
             this._new_socks.splice(idx, 1);
         }
+    }
+
+    _on_msg(msg: string)
+    {
+        this._on_msg_impl(msg, true);
+    }
+
+    _on_ipc_msg(msg: string)
+    {
+        this._on_msg_impl(msg, false);
+    }
+
+    _on_msg_impl(msg: string, to_ipc: boolean)
+    {
+        try {
+            let m = Message.parse(msg);
+            let intc;
+
+            if (!to_ipc)
+                intc = this._ipc_interceptors[m.target];
+            else
+                intc = this._ws_interceptors[m.target];
+
+            _log_msg(m, to_ipc, intc == null);
+
+            if (intc)
+                intc.handleMessage(m, !to_ipc)
+                    .then(this._intc_handle_return.bind(this, m, to_ipc))
+                    .catch(this._intc_handle_return_error.bind(this, m, to_ipc));
+            else {
+                if (to_ipc)
+                    this._ipc.send(msg);
+                else
+                    this._sock.emit('msg', msg);
+            }
+        }
+        catch (err) {
+        }
+    }
+
+
+    _intc_handle_return(msg: Message, to_ipc: boolean, data: any)
+    {
+        msg.data = data;
+
+        _log_msg(msg, false, false);
+
+        if(to_ipc)
+            this._sock.emit('msg', msg.toString());
+        else
+            this._ipc.send(msg.toString());
+    }
+
+    _intc_handle_return_error(msg: Message, to_ipc: boolean, data: any)
+    {
+        let newmsg = Message.Rsp(msg.target, msg.field);
+        log.info("returning error")
+        newmsg.err = data;
+        newmsg.data = "__ERROR__";
+
+        _log_msg(newmsg, false, false);
+
+        if(to_ipc)
+            this._sock.emit('msg', newmsg.toString());
+        else
+            this._ipc.send(newmsg.toString());
+    }
+
+    addIPCInterceptor(intc: NodeMessageInterceptor)
+    {
+        this._ipc_interceptors[intc.target()] = intc;
+    }
+
+    addWSInterceptor(intc: NodeMessageInterceptor)
+    {
+        this._ws_interceptors[intc.target()] = intc;
     }
 }
 
@@ -177,7 +271,27 @@ export class SINodeWSClient {
 /**
  * Represents the connection to a node in the SI server
  */
-class SIServerWSSession {
+export class SIServerWSSession extends Connection {
+
+    begin(): void
+    {
+        throw new Error('Method not implemented.');
+    }
+
+    send(msg: Message): void
+    {
+        log.info('Send message to ' + msg.target);
+
+        if (this._sock) {
+            this._sock.emit('msg', msg.toString());
+        }
+    }
+
+    isLocal(): boolean
+    {
+        return false;
+    }
+
     private _state: SISessionState = SISessionState.OFFLINE;
     private _sock: SocketIO.Socket;
     private _id: NodeIdentification;
@@ -185,15 +299,14 @@ class SIServerWSSession {
 
     constructor(socket: SocketIO.Socket, server: SIServerWSServer)
     {
+        super();
         this._sock   = socket;
         this._server = server;
 
         this._sock.on(
             SIClientEvents.EXCHANGE_IDS, this._on_exchange_ids.bind(this));
 
-        this._sock.on(
-            SIClientEvents.DSP_ONLINE, this._on_dsp_online.bind(this));
-
+        this._sock.on('msg', this._on_msg.bind(this));
         this._sock.on('disconnect', this._on_disconnect.bind(this));
 
         this._state = SISessionState.CONNECT_NODE;
@@ -202,10 +315,12 @@ class SIServerWSSession {
     _on_exchange_ids(id: NodeIdentification)
     {
         if (this._state == SISessionState.CONNECT_NODE) {
-            log.info("Got EXCHANGE_IDS message from " + id.name);
+            log.info('Got EXCHANGE_IDS message from ' + id.name);
             this._id    = id;
-            this._state = SISessionState.WAIT_DSP;
-            this._sock.emit(SISessionEvents.CHECK_DSP);
+            this._state = SISessionState.ONLINE;
+            this._sock.emit(SISessionEvents.ACK);
+            this.emit('online');
+            log.info('Sent ACK message to node. Node is online!');
         }
         else {
             log.error('Unexpected exchange_ids message, trashing connection');
@@ -213,22 +328,21 @@ class SIServerWSSession {
         }
     }
 
-    _on_dsp_online()
-    {
-        if (this._state == SISessionState.WAIT_DSP) {
-            log.info("Got DSP_ONLINE message from " + this._id.name);
-            this._state = SISessionState.ONLINE;
-            this._server.addFromNewSessions(this);
-        }
-        else {
-            log.error('Unexpected dsp_online message, trashing connection');
-            this.destroy();
-        }
-    }
-
     _on_disconnect()
     {
+        this.emit('offline');
         this._server._on_disconnect(this);
+    }
+
+    _on_msg(msg: string)
+    {
+        try {
+            let m = Message.parse(msg);
+            this.emit(m.target, m);
+        }
+        catch (err) {
+            log.error('Could not parse message: ' + err);
+        }
     }
 
     id()
@@ -239,20 +353,21 @@ class SIServerWSSession {
     destroy()
     {
         this._sock.disconnect();
+        this._server._on_disconnect(this);
     }
 }
 
 /**
  * Communications server class
  */
-export class SIServerWSServer {
+export class SIServerWSServer extends EventEmitter {
 
     private _io: SocketIO.Server;
     private _http: http.Server;
     private _mdns_advertiser: mdns.Advertisement;
 
     private _new_sessions: SIServerWSSession[] = [];
-    private _sessions: SIServerWSSession[] = [];
+    private _sessions: SIServerWSSession[]     = [];
 
     /**
      * construct a new WebSocket server to communicate with SI DSP Nodes
@@ -260,6 +375,7 @@ export class SIServerWSServer {
      */
     constructor(config: any)
     {
+        super();
         this._http = http.createServer();
         this._io   = SocketIO.listen(this._http);
 
@@ -281,7 +397,9 @@ export class SIServerWSServer {
 
     private _on_connection(socket: SocketIO.Socket)
     {
-        this._new_sessions.push(new SIServerWSSession(socket, this));
+        let session = new SIServerWSSession(socket, this);
+        this._new_sessions.push(session);
+        this.emit('new-connection', session);
     }
 
     _on_disconnect(session: SIServerWSSession)
@@ -289,8 +407,8 @@ export class SIServerWSServer {
         let idx = this._sessions.findIndex(s => s === session);
 
         if (idx != -1) {
-            log.info("Removing connection for " + session.id().name);
-            this._sessions.splice(idx, 1);
+            log.info('Removing connection for ' + session.id().name);
+            this.emit('close-connection', session)
         }
     }
 

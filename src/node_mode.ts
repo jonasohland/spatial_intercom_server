@@ -6,7 +6,7 @@ import { SINodeWSClient } from './communication'
 import * as discovery from './discovery'
 import * as IPC from './ipc'
 import * as server_config from './server_config'
-import { SIDSPProcess } from './dsp_child_process';
+import { SIDSPProcess } from './dsp_process';
 
 const local_addresses = <string[]>[];
 
@@ -23,10 +23,15 @@ Object.keys(ifaces).forEach(function(ifname) {
 
 export default function(options: any)
 {
-    server_config.loadServerConfigFile();
+    server_config.loadServerConfigFile(options.config);
 
     const config  = server_config.merge(options);
-    const wsclient = new SINodeWSClient(config);
     
-    // const dspp = new SIDSPProcess(options);
+    const ipc = new IPC.IPCServer();
+    const wsclient = new SINodeWSClient(config, ipc);
+
+    const dspp = new SIDSPProcess(options);
+    wsclient.addWSInterceptor(dspp);
+
+    dspp.start();
 }
