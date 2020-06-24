@@ -4,16 +4,50 @@ import * as Logger from './log';
 import * as os from 'os';
 import * as fs from 'fs';
 import { SIServerWSSession, NodeMessageInterceptor } from './communication'
-import { Message, IPCServer } from './ipc';
+import { Message, IPCServer, Requester } from './ipc';
 import { ignore, promisifyEventWithTimeout } from './util';
 
 // i will have to write this myself
 import eventToPromise from 'event-to-promise';
 import { runInThisContext } from 'vm';
+import { uniqueId } from 'lodash';
 
 const log = Logger.get("DSPROC");
 
-export class SIDSPProcess extends NodeMessageInterceptor {
+export class NodeState {
+    _uid: string;
+    _data: any;
+
+    isSame(other: NodeState)
+    {
+        return this._uid == other._uid;
+    }
+
+    static parse(data: string): NodeState
+    {
+        let s = new NodeState();
+        Object.assign(s, JSON.parse(data));
+        return s;
+    }
+
+    toString()
+    {
+        return JSON.stringify(this);
+    }
+
+    get(): any
+    {
+        return this._data;
+    }
+
+    store(data: any)
+    {
+        Object.assign(this._data, data);
+        this._uid = uniqueId();
+    }
+}
+
+export class LocalNodeController extends NodeMessageInterceptor {
 
     private _autorestart: boolean;
     private _exec_known: boolean;
@@ -65,7 +99,7 @@ export class SIDSPProcess extends NodeMessageInterceptor {
             case "restart":
                 return this._restart();
             case "await-start":
-                return this._await_start();
+                return this._await_start(<number> msg.data);
             case "external":
                 return this._exec_known == false;
             default: 
@@ -100,7 +134,7 @@ export class SIDSPProcess extends NodeMessageInterceptor {
         return base;
     }
 
-    async _await_start()
+    async _await_start(timeout: number = 10000)
     {
         if(this._ipc.connected())
             return true;
@@ -110,9 +144,9 @@ export class SIDSPProcess extends NodeMessageInterceptor {
             this.start();
         }
         else
-            log.warn("Could not find DSP process. Waiting for external start");
+            log.warn("Could not find DSP executable. Waiting for external start");
         
-        return promisifyEventWithTimeout(this._ipc, 'open', 60000);
+        return promisifyEventWithTimeout(this._ipc, 'open', timeout);
     } 
 
     async _restart()
@@ -184,17 +218,32 @@ export class SIDSPProcess extends NodeMessageInterceptor {
 
 }
 
-export class RemoteDSPProcessController {
+export class NodeController {
 
-    _session: SIServerWSSession;
+    _client: Requester;
 
     constructor(session: SIServerWSSession)
     {
-        this._session = session;
+        this._client = session.getRequester('node-controller');
+
+        this._try_dsp_start().then(() => {
+            log.info("Cool");
+        });
     }
 
-    async restart()
+    async _try_dsp_start()
     {
-
+        let is_started: boolean = false;
+        
+        while(!is_started) {
+            try {
+                await this._client.requestTmt('await-start', 20000, 10000);
+                is_started = true;
+            } catch (err) {
+                log.error('Still waiting for dsp start. Error: ' + err);
+            }
+        }
+        
+        log.info("DSP started");
     }
 }

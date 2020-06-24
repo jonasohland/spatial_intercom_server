@@ -47,12 +47,6 @@ export class SIDSPNode {
         this.id = nid;
         this.addresses = addrs;
 
-        if (local)
-            this.connection = new IPC.LocalConnection('default');
-        else {
-            this.connection = new IPC.RemoteConnection(dsp);
-        }
-
         this.graph = new DSP.Graph(this.connection);
         this.devices = new AudioDevices.Manager(this.connection);
         this.vst = new VST.Manager(this.connection);

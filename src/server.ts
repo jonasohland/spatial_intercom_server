@@ -10,12 +10,12 @@ import {SIDSPNode} from './instance';
 import * as Logger from './log'
 import {ShowfileManager, ShowfileTarget} from './showfiles';
 import * as tc from './timecode';
-import {UsersManager} from './users';
 import * as util from './util';
 import {Manager} from './vst';
 import WebInterface from './web_interface';
 import { TcpSocketConnectOpts } from 'net';
 import { SIServerWSServer, SIServerWSSession } from './communication';
+import { NodeController } from './dsp_process';
 
 const log = Logger.get('SERVER');
 
@@ -32,7 +32,6 @@ export class SpatialIntercomServer {
     headtracking: Headtracking;
     audio_device_manager: AudioDevices.AudioDeviceManager;
     inputs: Inputs.InputManager
-    users: UsersManager;
     showfileman: ShowfileManager;
     tc: tc.Timecode;
     sisrv: SIServerWSServer;
@@ -57,45 +56,17 @@ export class SpatialIntercomServer {
 
         this.headtracking = new Headtracking(this.webif, this.showfileman, config.interface);
 
-        this.users = new UsersManager(
-            this.webif, this.inputs, this.headtracking);
-
         this.sisrv = new SIServerWSServer(config);
 
         this.sisrv.on('new-connection', (connection: SIServerWSSession) => {
             connection.on('online', () => {
-                log.info("Online :)")
-
-                let req = connection.getRequester('node-controller');
-
-                req.requestTyped('is-started').bool().then((is) => {
-                    log.info("is started: " + is);
-                });
-
-                req.requestTmt('await-start', 60000).then(() => {
-                    log.info('dsp started!');
-                    req.requestTyped('is-started').bool().then((is) => {
-                        log.info("is started: " + is);
-                    });
-                    req.requestTyped('external').bool().then(ext => {
-                        log.info("is_external: " + ext);
-                    });
-                }).catch(err => {
-                    log.error("Node returned: " + err);
-                });
-
-                req.on('dsp-started', () => {
-                    log.info("DSP started");
-                });
-
-                req.on('dsp-died', () => {
-                    log.info("DSP died");
-                })
+                let ctrl = new NodeController(connection);
             });
-
             connection.on('offline', () => {
                 log.info("Offline :(")
-            })
+            });
+
+            const n = new Inputs.NodeAudioInputManager(connection);
         })
     }
 }

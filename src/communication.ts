@@ -263,7 +263,6 @@ export class SINodeWSClient {
     _intc_handle_return_error(msg: Message, to_ipc: boolean, data: any)
     {
         let newmsg = Message.Rsp(msg.target, msg.field);
-        log.info("returning error")
         newmsg.err = data;
         newmsg.data = "__ERROR__";
 
@@ -308,13 +307,9 @@ export class SIServerWSSession extends Connection {
         throw new Error('Method not implemented.');
     }
 
-    send(msg: Message): void
-    {
-        log.info('Send message to ' + msg.target);
-
-        if (this._sock) {
+    send(msg: Message): void {
+        if (this._sock) 
             this._sock.emit('msg', msg.toString());
-        }
     }
 
     isLocal(): boolean

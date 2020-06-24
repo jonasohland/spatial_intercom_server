@@ -6,6 +6,8 @@ import {SIDSPNode} from './instance';
 import * as Logger from './log';
 import {ShowfileRecord, ShowfileManager, ShowfileSection, ShowfileTarget} from './showfiles';
 import WebInterface from './web_interface';
+import { ManagedNodeStateObject, ManagedNodeStateRegister, NodeModule } from './node';
+import { SIServerWSSession } from './communication';
 
 const log = Logger.get('INP');
 
@@ -161,5 +163,60 @@ export class InputManager extends ShowfileTarget {
         nodeAndInput.inputs.push(i);
 
         this.updateInterface(this.webif.io);
+    }
+}
+
+export interface NodeAudioInputDescription {
+
+}
+
+export class NodeAudioInput extends ManagedNodeStateObject<NodeAudioInputDescription> {
+
+    _description: NodeAudioInputDescription;
+
+    async set(val: NodeAudioInputDescription) {
+        this._description = val;
+    }
+
+    async get(): Promise<NodeAudioInputDescription> {
+        return this._description;
+    }
+
+    constructor()
+    {
+        super();
+    }
+}
+
+export class NodeAudioInputList extends ManagedNodeStateRegister {
+
+    constructor() {
+        super();
+
+        let obj = new NodeAudioInput();
+        obj.init();
+
+        this.add(obj);
+    }
+
+}
+
+export class NodeAudioInputManager extends NodeModule {
+    
+    _input_list: NodeAudioInputList;
+
+    constructor(session: SIServerWSSession)
+    {
+        super(session, 'inputs');
+    
+        this._input_list = new NodeAudioInputList();
+
+        this.add(this._input_list, 'input-list');
+
+        this._local_state._export().then(data => {
+            console.log(data);
+        })
+
+        console.log();
     }
 }

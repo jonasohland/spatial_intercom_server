@@ -6,7 +6,7 @@ import { SINodeWSClient } from './communication'
 import * as discovery from './discovery'
 import * as IPC from './ipc'
 import * as server_config from './server_config'
-import { SIDSPProcess } from './dsp_process';
+import { LocalNodeController } from './dsp_process';
 import { log } from 'winston';
 
 const local_addresses = <string[]>[];
@@ -30,7 +30,7 @@ export default function(options: any)
 
     const ipc = new IPC.IPCServer();
     const wsclient = new SINodeWSClient(config, ipc);
-    const dspp = new SIDSPProcess(options, ipc);
+    const dspp = new LocalNodeController(options, ipc);
     wsclient.addWSInterceptor(dspp);
 
     dspp.start().catch(err => {
