@@ -4,8 +4,11 @@ import * as Logger from './log';
 import * as os from 'os';
 import * as fs from 'fs';
 import { SIServerWSSession, NodeMessageInterceptor } from './communication'
-import { Message } from './ipc';
+import { Message, IPCServer } from './ipc';
 import { ignore } from './util';
+
+// i will have to write this myself
+import eventToPromise from 'event-to-promise';
 
 const log = Logger.get("DSPROC");
 
@@ -22,15 +25,20 @@ export class SIDSPProcess extends NodeMessageInterceptor {
         }
 
         switch(msg.field) {
+            case "is-started":
+                return this._cp != null;
+            case "restart":
+                return this._restart();
             default: 
-                throw "Unknown message";
+            throw "Unknown message";
         }
     }
 
-    constructor(options: any)
+    constructor(options: any, ipc: IPCServer)
     {
         super();
         this._exec_location = options.dspExecutable;
+        this._ipc = ipc;
     }
 
     getDSPExecutablePath()
@@ -60,6 +68,26 @@ export class SIDSPProcess extends NodeMessageInterceptor {
         return base;
     }
 
+    async _restart()
+    {
+        if(this._cp){
+            this._autorestart = true;
+            log.info("Killing DSP process");
+            await this.kill();
+            await eventToPromise(this._ipc, 'open');
+            return ignore(log.info("DSP process started"));
+        }
+        else
+            throw "Not running";
+    }
+
+    async kill()
+    {
+        this._cp.kill();
+        await eventToPromise(this._cp, 'close');
+        log.info("DSP process killed.")
+    }
+
     async start()
     {
         this._cp = spawn(this.getDSPProcessCommmand())
@@ -82,9 +110,11 @@ export class SIDSPProcess extends NodeMessageInterceptor {
 
         this._cp.on('close', errc => {
             log.error(`DSP process died. Return code: ${errc}  --- Restaring`);
-            this.start().catch(err => {
-                log.info("Could not restart DSP process: " + err);
-            });
+            if(this._autorestart) {
+                this.start().catch(err => {
+                    log.info("Could not restart DSP process: " + err);
+                });
+            }
         });
 
         this._cp.on("error", code => {
@@ -96,10 +126,12 @@ export class SIDSPProcess extends NodeMessageInterceptor {
         });
     }
     
+    private _autorestart: boolean;
     private _exec_location: string;
     private _stdout_rl: ReadLineInterface;
     private _stderr_rl: ReadLineInterface;
     private _cp: ChildProcess;
+    private _ipc: IPCServer;
 }
 
 export class RemoteDSPProcess {

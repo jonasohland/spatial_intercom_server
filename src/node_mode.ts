@@ -26,11 +26,10 @@ export default function(options: any)
     server_config.loadServerConfigFile(options.config);
 
     const config  = server_config.merge(options);
-    
+
     const ipc = new IPC.IPCServer();
     const wsclient = new SINodeWSClient(config, ipc);
-
-    const dspp = new SIDSPProcess(options);
+    const dspp = new SIDSPProcess(options, ipc);
     wsclient.addWSInterceptor(dspp);
 
     dspp.start();

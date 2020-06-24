@@ -68,8 +68,10 @@ export class SpatialIntercomServer {
 
                 let req = connection.getRequester('node-controller');
 
-                req.request('is-started').then(() => {
-                    log.info('dsp is online!');
+                req.request('restart').then(() => {
+                    log.info('dsp restarted!');
+                }).catch(err => {
+                    log.error("Node returned: " + err);
                 })
 
             });

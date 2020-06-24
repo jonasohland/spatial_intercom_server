@@ -44,6 +44,7 @@ function getInterface(option: string, interfaces: any)
         log.error('Could not find network interface ' + option);
 }
 
+
 export function merge(cmd_opts: commander.Command)
 {
     let output: {   

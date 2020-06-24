@@ -87,7 +87,7 @@ export class IPCServer extends EventEmitter {
         this._name = name;
         this._server = _make_pipe(this._name, pipe => {
 
-            log.info("Established connection to local dsp process")
+            log.info("Established connection to local dsp process");
 
             this._pipe = pipe;
             this._server.close();
@@ -96,10 +96,13 @@ export class IPCServer extends EventEmitter {
             this._pipe.pipe(split('\0')).on('data', this._on_msg.bind(this));
             
             this._pipe.on('close', had_err => {
+                this.emit('closed')
                 log.warn('Local pipe broke. Cleaning up.')
                 this._create_server(this._name);
                 this._pipe = null;
-            })
+            });
+
+            this.emit('open');
         });
     }
 
