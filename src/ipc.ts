@@ -97,7 +97,7 @@ export class IPCServer extends EventEmitter {
             
             this._pipe.on('close', had_err => {
                 this.emit('closed')
-                log.warn('Local pipe broke. Cleaning up.')
+                log.warn('Local pipe broke. Cleaning up.');
                 this._create_server(this._name);
                 this._pipe = null;
             });
@@ -114,8 +114,16 @@ export class IPCServer extends EventEmitter {
     send(msg: string)
     {
         // Send a null terminated string. This is ugly, but it works for now...
-        if(this._pipe)
+        if(this._pipe) {
             this._pipe.write(msg + '\0');
+            return true;
+        } else
+            return false;
+    }
+
+    connected()
+    {
+        return this._pipe != null;
     }
 }
 
@@ -183,6 +191,11 @@ export class Message {
     static Rsp(tg: string, fld: string): Message
     {
         return new Message(tg, fld, MessageMode.RSP);
+    }
+
+    static Event(tg: string, fld: string): Message
+    {
+        return new Message(tg, fld, MessageMode.EVT);
     }
 
     static parse(data: string): Message

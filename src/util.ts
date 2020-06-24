@@ -4,6 +4,7 @@ import * as os from 'os';
 import { IPCBridge } from './ipc';
 import { isIP } from 'net';
 import { subnet } from 'ip';
+import { EventEmitter } from 'serialport';
 
 export function applyMixins(derivedCtor: any, baseCtors: any[])
 {
@@ -86,4 +87,19 @@ export function getMatchingLocalInterface(addr: string[])
 export function ignore(...any: any)
 {
     // do nothing (magical.....)
+}
+
+export function promisifyEventWithTimeout<EventReturnValueType>(eventemitter: EventEmitter, event: string, timeout: number = 10000) : Promise<EventReturnValueType>
+{
+    return new Promise((res, rej) => {
+
+        const tmt = setTimeout(() => {
+            rej(new Error("Timeout"));
+        }, timeout);
+
+        eventemitter.once(event, (val: EventReturnValueType) => {
+            clearTimeout(tmt);
+            res(val);
+        });
+    });
 }

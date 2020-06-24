@@ -7,7 +7,7 @@ import SocketIO from 'socket.io';
 import SocketIOClient from 'socket.io-client';
 
 import {getServerAdvertiser, getServerBrowser} from './discovery';
-import {_log_msg, Connection, IPCServer, Message} from './ipc';
+import {_log_msg, Connection, IPCServer, Message, MessageMode} from './ipc';
 import * as Logger from './log';
 import {defaultIF} from './util';
 
@@ -53,9 +53,14 @@ const SISessionEvents = {
     ACK : '__ack',
 }
 
-export abstract class NodeMessageInterceptor {
+export abstract class NodeMessageInterceptor extends EventEmitter {
     abstract target(): string;
     abstract async handleMessage(msg: Message, from_ipc: boolean): Promise<any>;
+
+    event(name: string, payload?: any)
+    {
+        this.emit('__event', name, payload);
+    }
 }
 
 /**
@@ -200,16 +205,25 @@ export class SINodeWSClient {
         this._on_msg_impl(msg, false);
     }
 
+    _ws_return_error(original_message: Message, err: string)
+    {
+        let newmsg = Message.Rsp(original_message.target, original_message.field);
+        newmsg.data = '__ERROR__';
+        newmsg.err = err;
+
+        this._sock.emit('msg', newmsg.toString());
+    }
+
     _on_msg_impl(msg: string, to_ipc: boolean)
     {
         try {
             let m = Message.parse(msg);
             let intc;
 
-            if (!to_ipc)
-                intc = this._ipc_interceptors[m.target];
-            else
+            if (to_ipc)
                 intc = this._ws_interceptors[m.target];
+            else
+                intc = this._ipc_interceptors[m.target];
 
             _log_msg(m, to_ipc, intc == null);
 
@@ -218,19 +232,24 @@ export class SINodeWSClient {
                     .then(this._intc_handle_return.bind(this, m, to_ipc))
                     .catch(this._intc_handle_return_error.bind(this, m, to_ipc));
             else {
-                if (to_ipc)
-                    this._ipc.send(msg);
+                if (to_ipc){
+                    if (!this._ipc.send(msg))
+                        this._ws_return_error(m, "DSP process offline");
+                }
                 else
                     this._sock.emit('msg', msg);
             }
         }
         catch (err) {
+            log.error("Something went wrong while delivering message: " + err);
+            // not shure what to do here...
         }
     }
 
 
     _intc_handle_return(msg: Message, to_ipc: boolean, data: any)
     {
+        msg.mode = MessageMode.RSP;
         msg.data = data;
 
         _log_msg(msg, false, false);
@@ -256,6 +275,16 @@ export class SINodeWSClient {
             this._ipc.send(newmsg.toString());
     }
 
+    _intc_emit_event(intc: NodeMessageInterceptor, name: string, payload: any)
+    {
+        if(this._sock) {
+            let msg = Message.Event(intc.target(), name);
+            msg.data = payload;
+            _log_msg(msg, false, false);
+            this._sock.emit('msg', msg.toString());
+        }
+    }
+
     addIPCInterceptor(intc: NodeMessageInterceptor)
     {
         this._ipc_interceptors[intc.target()] = intc;
@@ -264,6 +293,7 @@ export class SINodeWSClient {
     addWSInterceptor(intc: NodeMessageInterceptor)
     {
         this._ws_interceptors[intc.target()] = intc;
+        intc.on('__event', this._intc_emit_event.bind(this, intc));
     }
 }
 

@@ -68,12 +68,29 @@ export class SpatialIntercomServer {
 
                 let req = connection.getRequester('node-controller');
 
-                req.request('restart').then(() => {
-                    log.info('dsp restarted!');
+                req.requestTyped('is-started').bool().then((is) => {
+                    log.info("is started: " + is);
+                });
+
+                req.requestTmt('await-start', 60000).then(() => {
+                    log.info('dsp started!');
+                    req.requestTyped('is-started').bool().then((is) => {
+                        log.info("is started: " + is);
+                    });
+                    req.requestTyped('external').bool().then(ext => {
+                        log.info("is_external: " + ext);
+                    });
                 }).catch(err => {
                     log.error("Node returned: " + err);
-                })
+                });
 
+                req.on('dsp-started', () => {
+                    log.info("DSP started");
+                });
+
+                req.on('dsp-died', () => {
+                    log.info("DSP died");
+                })
             });
 
             connection.on('offline', () => {

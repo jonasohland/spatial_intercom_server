@@ -7,6 +7,7 @@ import * as discovery from './discovery'
 import * as IPC from './ipc'
 import * as server_config from './server_config'
 import { SIDSPProcess } from './dsp_process';
+import { log } from 'winston';
 
 const local_addresses = <string[]>[];
 
@@ -32,5 +33,7 @@ export default function(options: any)
     const dspp = new SIDSPProcess(options, ipc);
     wsclient.addWSInterceptor(dspp);
 
-    dspp.start();
+    dspp.start().catch(err => {
+        ;
+    });
 }

@@ -5,14 +5,49 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { SIServerWSSession, NodeMessageInterceptor } from './communication'
 import { Message, IPCServer } from './ipc';
-import { ignore } from './util';
+import { ignore, promisifyEventWithTimeout } from './util';
 
 // i will have to write this myself
 import eventToPromise from 'event-to-promise';
+import { runInThisContext } from 'vm';
 
 const log = Logger.get("DSPROC");
 
 export class SIDSPProcess extends NodeMessageInterceptor {
+
+    private _autorestart: boolean;
+    private _exec_known: boolean;
+    private _exec_location: string;
+    private _stdout_rl: ReadLineInterface;
+    private _stderr_rl: ReadLineInterface;
+    private _cp: ChildProcess;
+    private _ipc: IPCServer;
+
+    constructor(options: any, ipc: IPCServer)
+    {
+        super();
+        this._exec_location = options.dspExecutable;
+        this._ipc = ipc;
+        this._autorestart = true;
+
+        this._ipc.on('open', () => {
+            this.event('dsp-started');
+        });
+
+        this._ipc.on('closed', () => {
+            this.event('dsp-died');
+        });
+
+        try {
+            if(fs.existsSync(this.getDSPProcessCommmand()))
+                this._exec_known = true;
+            else
+                this._exec_known = false;
+        } catch (err) {
+            log.warn("Could not find executable: " + err);
+            this._exec_known = false;
+        }
+    }
 
     target(): string {
         return "node-controller";
@@ -26,19 +61,16 @@ export class SIDSPProcess extends NodeMessageInterceptor {
 
         switch(msg.field) {
             case "is-started":
-                return this._cp != null;
+                return this._ipc._pipe != null;
             case "restart":
                 return this._restart();
+            case "await-start":
+                return this._await_start();
+            case "external":
+                return this._exec_known == false;
             default: 
             throw "Unknown message";
         }
-    }
-
-    constructor(options: any, ipc: IPCServer)
-    {
-        super();
-        this._exec_location = options.dspExecutable;
-        this._ipc = ipc;
     }
 
     getDSPExecutablePath()
@@ -68,11 +100,28 @@ export class SIDSPProcess extends NodeMessageInterceptor {
         return base;
     }
 
+    async _await_start()
+    {
+        if(this._ipc.connected())
+            return true;
+
+        if(this._exec_known) {
+            log.info("Starting dsp process");
+            this.start();
+        }
+        else
+            log.warn("Could not find DSP process. Waiting for external start");
+        
+        return promisifyEventWithTimeout(this._ipc, 'open', 60000);
+    } 
+
     async _restart()
     {
+        if(!this._exec_known)
+            throw "DSP Process is running externally";
+
         if(this._cp){
             this._autorestart = true;
-            log.info("Killing DSP process");
             await this.kill();
             await eventToPromise(this._ipc, 'open');
             return ignore(log.info("DSP process started"));
@@ -83,13 +132,20 @@ export class SIDSPProcess extends NodeMessageInterceptor {
 
     async kill()
     {
+        if(!this._exec_known)
+            throw "DSP Process is running externally";
+
+        log.info("Killing DSP process");
         this._cp.kill();
-        await eventToPromise(this._cp, 'close');
+        await promisifyEventWithTimeout<void>(this._cp, 'close', 1000);
         log.info("DSP process killed.")
     }
 
     async start()
     {
+        if(!this._exec_known)
+            throw "Executable location unknown. DSP process must be started externally";
+
         this._cp = spawn(this.getDSPProcessCommmand())
 
         this._stdout_rl = createInterface({
@@ -125,16 +181,10 @@ export class SIDSPProcess extends NodeMessageInterceptor {
             log.error("DSP process disconnect: ")
         });
     }
-    
-    private _autorestart: boolean;
-    private _exec_location: string;
-    private _stdout_rl: ReadLineInterface;
-    private _stderr_rl: ReadLineInterface;
-    private _cp: ChildProcess;
-    private _ipc: IPCServer;
+
 }
 
-export class RemoteDSPProcess {
+export class RemoteDSPProcessController {
 
     _session: SIServerWSSession;
 
