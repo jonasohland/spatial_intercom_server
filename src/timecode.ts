@@ -3,9 +3,8 @@ import {EventEmitter} from 'events';
 import * as os from 'os';
 import * as readline from 'readline';
 import * as Logger from './log';
-import { SIGINT } from 'constants';
-import { Connection, Requester } from './ipc';
 import { SIDSPNode } from './instance';
+import { Requester, Connection } from './communication';
 
 const log = Logger.get('TIMECD');
 

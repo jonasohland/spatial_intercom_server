@@ -87,7 +87,7 @@ export function merge(cmd_opts: commander.Command)
                             Number.parseInt(_config_file.network.webserver_port) || 8090
 
     // console.log(_config_file.network);
-    console.log(output);
+    // console.log(output);
 
     return output;
 }

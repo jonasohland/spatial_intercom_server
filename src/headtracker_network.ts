@@ -1,17 +1,18 @@
-import { createSocket as createDgramSocket, Socket } from 'dgram';
+import {createSocket as createDgramSocket, Socket} from 'dgram';
 import EventEmitter from 'events';
 
 import * as Logger from './log';
 
 const log = Logger.get('HTK');
 
-import { Headtracker, 
-    HeadtrackerInvertation, 
-    HeadtrackerConfigFlags, 
-    HeadtrackerNetworkFlags, 
-    HeadtrackerNetworkSettings, 
-    HeadtrackerStateFlags, 
-    HeadtrackerConfigPacket 
+import {
+    Headtracker,
+    HeadtrackerInvertation,
+    HeadtrackerConfigFlags,
+    HeadtrackerNetworkFlags,
+    HeadtrackerNetworkSettings,
+    HeadtrackerStateFlags,
+    HeadtrackerConfigPacket
 } from './headtracker'
 import WebInterface from './web_interface';
 
@@ -58,10 +59,7 @@ export class NetworkHeadtracker extends Headtracker {
     socket: Socket;
     webif: WebInterface;
 
-    constructor(server: WebInterface,
-                id: number,
-                addr: string,
-                port: number,
+    constructor(server: WebInterface, id: number, addr: string, port: number,
                 netif?: string)
     {
         super();
@@ -77,7 +75,7 @@ export class NetworkHeadtracker extends Headtracker {
         this.local.netif = netif;
 
         this.socket = createDgramSocket('udp4');
-        this.webif = server;
+        this.webif  = server;
 
         this.socket.on('close', this._onClose.bind(this));
         this.socket.on('error', this._onError.bind(this));
@@ -101,7 +99,7 @@ export class NetworkHeadtracker extends Headtracker {
 
     _onListening()
     {
-        this.local.port = this.socket.address().port;
+        this.local.port  = this.socket.address().port;
         this.local.netif = this.socket.address().address;
 
         if (this._state(HTRKDevState.CONNECTING)) {
@@ -210,7 +208,8 @@ export class NetworkHeadtracker extends Headtracker {
 
     _connect()
     {
-        if (this._state(HTRKDevState.CONNECTED)) return;
+        if (this._state(HTRKDevState.CONNECTED))
+            return;
 
         this._setState(HTRKDevState.CONNECTING);
 
@@ -221,7 +220,8 @@ export class NetworkHeadtracker extends Headtracker {
     {
         this._setState(HTRKDevState.DISCONNECTED);
 
-        if (this.socket) this.socket.close();
+        if (this.socket)
+            this.socket.close();
     }
 
     _handleStateUpdate(m: HeadtrackerConfigPacket, is_req: boolean)
@@ -244,9 +244,11 @@ export class NetworkHeadtracker extends Headtracker {
 
         log.silly(`Handling ${is_req ? 'requested ' : ''}state update`);
 
-        if (!this.update_required) this.local.conf = m;
+        if (!this.update_required)
+            this.local.conf = m;
 
-        if (!is_req) this._updateRemote();
+        if (!is_req)
+            this._updateRemote();
     }
 
     _askStillAlive()
@@ -382,25 +384,29 @@ export class NetworkHeadtracker extends Headtracker {
 
     calibrate(): Promise<void>
     {
-        log.warn("Calibrate-stub called");
+        log.warn('Calibrate-stub called');
         return new Promise((res) => {
             res();
         });
     }
 
-    beginInit(): Promise<void> {
+    beginInit(): Promise<void>
+    {
         return undefined;
     }
-    
-    finishInit(): Promise<void> {
+
+    finishInit(): Promise<void>
+    {
         return undefined;
     }
 
     applyNetworkSettings(settings: HeadtrackerNetworkSettings)
     {
-        if (settings.id) this.local.conf.setDeviceID(settings.id);
+        if (settings.id)
+            this.local.conf.setDeviceID(settings.id);
 
-        if (settings.addr) this.local.conf.device_static_ip = settings.addr;
+        if (settings.addr)
+            this.local.conf.device_static_ip = settings.addr;
 
         if (settings.subnet)
             this.local.conf.device_static_subnet = settings.subnet;
@@ -456,8 +462,10 @@ export class NetworkHeadtracker extends Headtracker {
         clearTimeout(this.check_alive_timeout);
     }
 
-    isOnline() {
-        return <boolean> this._state(HTRKDevState.CONNECTED || HTRKDevState.BUSY);
+    isOnline()
+    {
+        return <boolean>this._state(HTRKDevState.CONNECTED
+                                    || HTRKDevState.BUSY);
     }
 
     start()

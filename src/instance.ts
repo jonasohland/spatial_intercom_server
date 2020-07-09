@@ -5,9 +5,8 @@ import winston, { add } from 'winston'
 import * as AudioDevices from './audio_devices'
 import * as DSP from './dsp'
 import * as VST from './vst';
-import * as DSPModules from './dsp_modules'
-import * as IPC from './ipc'
 import * as Logger from './log'
+import { Connection } from './communication'
 import { TimecodeNode } from './timecode';
 
 const log    = Logger.get('MGT');
@@ -19,7 +18,7 @@ export class InstanceID {
 }
 
 export interface InstanceStatusInformation {
-    audiostatus: AudioDevices.Status;
+    // audiostatus: AudioDevices.Status;
 }
 
 export interface InstanceNetworkInformations {
@@ -34,9 +33,9 @@ export class SIDSPNode {
     id: string;
     io: io.Socket;
     graph: DSP.Graph;
-    connection: IPC.Connection;
-    vst: VST.Manager;
-    devices: AudioDevices.Manager;
+    connection: Connection;
+    vst: VST.VSTScanner;
+    // devices: AudioDevices.Manager;
     service_browser: mdns.Browser;
     addresses: string[];
     tc: TimecodeNode;
@@ -47,15 +46,12 @@ export class SIDSPNode {
         this.id = nid;
         this.addresses = addrs;
 
-        this.graph = new DSP.Graph(this.connection);
-        this.devices = new AudioDevices.Manager(this.connection);
-        this.vst = new VST.Manager(this.connection);
+        // this.devices = new AudioDevices.Manager(this.connection);
         this.tc = new TimecodeNode(this.connection);
 
         this.connection.begin();
 
         this.connection.on('connection', () => {
-            this.graph.sync();
             this.vst.waitPluginsScanned();
             this.graph.setInputNode(64);
             this.graph.setOutputNode(64);

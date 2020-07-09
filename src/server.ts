@@ -1,21 +1,17 @@
-import * as mdns from 'dnssd';
 import express from 'express';
-import io from 'socket.io'
-
-import * as AudioDevices from './audio_devices'
-import * as discovery from './discovery'
+import * as fs from 'fs';
+import { AudioDevices } from './audio_devices'
+import {SIServerWSServer, SIServerWSSession, NodeIdentification, NODE_TYPE} from './communication';
+import {DSPController} from './dsp_process';
 import {Headtracking} from './headtracking'
 import * as Inputs from './inputs';
 import {SIDSPNode} from './instance';
 import * as Logger from './log'
 import {ShowfileManager, ShowfileTarget} from './showfiles';
 import * as tc from './timecode';
-import * as util from './util';
-import {Manager} from './vst';
 import WebInterface from './web_interface';
-import { TcpSocketConnectOpts } from 'net';
-import { SIServerWSServer, SIServerWSSession } from './communication';
-import { NodeController } from './dsp_process';
+import { StateUpdateStrategy, Server, Node } from './data';
+import { DSPNode } from './dsp_node';
 
 const log = Logger.get('SERVER');
 
@@ -23,50 +19,26 @@ export interface SocketAndInstance {
     instance: SIDSPNode,
 }
 
-export class SpatialIntercomServer {
+export class SpatialIntercomServer extends Server {
 
-    instances: SIDSPNode[] = [];
+    createNode(id: NodeIdentification): Node {
+        if(id.type == NODE_TYPE.DSP_NODE)
+            return new DSPNode(id);
+    }
+
+    destroyNode(node: Node): void {
+    }
 
     webif: WebInterface;
-
-    headtracking: Headtracking;
-    audio_device_manager: AudioDevices.AudioDeviceManager;
-    inputs: Inputs.InputManager
-    showfileman: ShowfileManager;
-    tc: tc.Timecode;
-    sisrv: SIServerWSServer;
-
-    app: express.Application;
+    audio_devices: AudioDevices;
 
     constructor(config: any)
     {
-        // handle all the dependency injection here
+        let webif = new WebInterface(config);
+        super(new SIServerWSServer(config), webif);
 
-        this.webif = new WebInterface(config);
-
-        this.showfileman = new ShowfileManager();
-
-        this.tc = new tc.Timecode(this.instances);
-
-        this.audio_device_manager = new AudioDevices.AudioDeviceManager(
-            this.webif, this.instances);
-
-        this.inputs = new Inputs.InputManager(
-            this.webif, this.audio_device_manager, this.showfileman);
-
-        this.headtracking = new Headtracking(this.webif, this.showfileman, config.interface);
-
-        this.sisrv = new SIServerWSServer(config);
-
-        this.sisrv.on('new-connection', (connection: SIServerWSSession) => {
-            connection.on('online', () => {
-                let ctrl = new NodeController(connection);
-            });
-            connection.on('offline', () => {
-                log.info("Offline :(")
-            });
-
-            const n = new Inputs.NodeAudioInputManager(connection);
-        })
+        this.webif = webif;
+        this.audio_devices = new AudioDevices();
+        this.add(this.audio_devices);
     }
 }

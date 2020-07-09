@@ -5,14 +5,32 @@ import * as http from 'http';
 import {machineIdSync} from 'node-machine-id';
 import SocketIO from 'socket.io';
 import SocketIOClient from 'socket.io-client';
-
+import _ from 'lodash';
 import {getServerAdvertiser, getServerBrowser} from './discovery';
-import {_log_msg, Connection, IPCServer, Message, MessageMode} from './ipc';
 import * as Logger from './log';
 import {defaultIF} from './util';
 
 
 const log = Logger.get('WSCOMM');
+
+
+export function _log_msg(msg: Message, input: boolean, forward: boolean = true)
+{
+
+    let to_from = input ? ' TO ' : 'FROM';
+
+    let target = forward ?  'DSP' : 'NODE_CONTROLLER'
+
+    let ty = MessageMode[msg.mode];
+
+    if (_.isObjectLike(msg.data))
+        log.verbose(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
+            ty}] -> [data truncated]`);
+    else
+        log.verbose(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
+            ty}] -> ${msg.data}${msg.err?`: ${msg.err}`:""}`);
+}
+
 
 /**
  * Create a unique identifier for this node user-chosen name.
@@ -25,8 +43,22 @@ function unique_node_id(name: string)
     return createHash('sha1').update(`${idstring}-${name}`).digest('base64');
 }
 
+export enum NODE_TYPE {
+    DSP_NODE,
+    HTRK_BRIDGE_NODE
+}
+
 export interface NodeIdentification {
-    id: string, name: string
+    id: string, name: string, type: NODE_TYPE
+}
+
+export enum MessageMode {
+    GET = 0,
+    SET,
+    DEL,
+    ALC,
+    RSP,
+    EVT
 }
 
 enum SISessionState {
@@ -63,6 +95,355 @@ export abstract class NodeMessageInterceptor extends EventEmitter {
     }
 }
 
+export abstract class NodeMessageHandler extends EventEmitter {
+    abstract send(msg: string): boolean;
+}
+
+export abstract class Connection extends EventEmitter {
+
+    abstract begin(): void;
+    abstract send(msg: Message): void;
+    abstract isLocal(): boolean;
+
+    _rejectors: ((reason?: any) => void)[] = [];
+
+    async _do_request(req: boolean, tg: string, fld: string, timeout?: number,
+                      data?: any): Promise<Message>
+    {
+        let self = this;
+
+        return new Promise((resolve, reject) => {
+            let tmt = setTimeout(() => {
+                let rejector_idx = self._rejectors.findIndex(rejctr => rejctr === reject);
+                
+                if(rejector_idx != -1){
+                    self._rejectors.splice(rejector_idx, 1);
+                    // log.info("Remove rejector because we timed out");
+                }
+
+                self.removeListener(tg, response_listener);
+                reject('timeout');
+            }, timeout || 1000);
+
+            let response_listener = (msg: Message) => {
+                if (msg.field == fld && msg.mode != MessageMode.EVT) {
+
+                    self.removeListener(tg, response_listener);
+                    clearTimeout(tmt);
+
+                    let rejector_idx = self._rejectors.findIndex(rejctr => rejctr === reject);
+                    if(rejector_idx != -1) {
+                        // log.info("Remove rejector because we received a response");
+                        self._rejectors.splice(rejector_idx, 1);
+                    }
+
+                    if (msg.isError())
+                        reject(new Error(<string>msg.err));
+                    else
+                        resolve(msg);
+                }
+            };
+
+            let msg = (req) ? Message.Get(tg, fld) : Message.Set(tg, fld);
+
+            msg.data = data;
+            this._rejectors.push(reject);
+            this.addListener(tg, response_listener);
+            this.send(msg);
+        });
+    }
+
+    async request(tg: string, fld: string, timeout?: number,
+                  data?: any): Promise<Message>
+    {
+        return this._do_request(true, tg, fld, timeout, data);
+    }
+
+    async set(tg: string, fld: string, timeout?: number,
+              data?: any): Promise<Message>
+    {
+        return this._do_request(false, tg, fld, timeout, data);
+    }
+
+    getRequester(target: string)
+    {
+        return new Requester(this, target);
+    }
+
+    decodeMessage(str: string)
+    {
+        let msg = Message.parse(str);
+
+        _log_msg(msg, false);
+
+        this.emit(msg.target, msg);
+    }
+
+    connectionFound()
+    {
+    }
+
+    destroy()
+    {
+        this._rejectors.forEach(rej => rej("Connection closed"));
+    }
+}
+
+
+export class Message {
+
+    target: string;
+    field: string;
+    err?: string;
+    mode: MessageMode;
+    data: number|string|object;
+
+    constructor(tg: string, fld: string, md: MessageMode)
+    {
+        this.target = tg;
+        this.field  = fld;
+        this.mode   = md;
+        this.data   = null;
+    }
+
+    copy(): Message
+    {
+        const m = new Message(this.target, this.field, this.mode);
+
+        m.data = _.cloneDeep(this.data);
+
+        return m;
+    }
+
+    toString()
+    {
+        return JSON.stringify({
+            t : this.target,
+            f : this.field,
+            m : this.mode,
+            d : this.data,
+            e : this.err
+        });
+    }
+
+    isError()
+    {
+        return this.err != undefined;
+    }
+
+    static Set(tg: string, fld: string): Message
+    {
+        return new Message(tg, fld, MessageMode.SET);
+    }
+
+    static Get(tg: string, fld: string): Message
+    {
+        return new Message(tg, fld, MessageMode.GET);
+    }
+
+    static Del(tg: string, fld: string): Message
+    {
+        return new Message(tg, fld, MessageMode.DEL);
+    }
+
+    static Alc(tg: string, fld: string): Message
+    {
+        return new Message(tg, fld, MessageMode.ALC);
+    }
+
+    static Rsp(tg: string, fld: string): Message
+    {
+        return new Message(tg, fld, MessageMode.RSP);
+    }
+
+    static Event(tg: string, fld: string): Message
+    {
+        return new Message(tg, fld, MessageMode.EVT);
+    }
+
+    static parse(data: string): Message
+    {
+        const obj = <any>JSON.parse(data);
+
+        const checkValue = (v: any, name: string) => {
+            if(v == null)
+                throw new Error('Invalid message, missing ' + name + ' field');
+        }
+
+        checkValue(obj.t, 'target');
+        checkValue(obj.f, 'field');
+        checkValue(obj.m, 'mode');
+
+        // we do not require a data field anymore
+        // checkValue(obj.d, 'data');
+
+        const m = new Message(obj.t, obj.f, obj.m);
+
+        m.data = obj.d;
+
+        if (obj.e && obj.e.length > 0)
+            m.err = obj.e;
+
+        return m;
+    }
+
+    setInt(i: number)
+    {
+        this.data = Number.parseInt('' + i);
+        return this;
+    }
+
+    setFloat(f: number)
+    {
+        this.data = Number.parseFloat('' + f);
+        return this;
+    }
+
+    setString(s: string)
+    {
+        this.data = s;
+        return this;
+    }
+
+    setArray(arr: any[])
+    {
+        this.data = arr;
+        return this;
+    }
+}
+
+export class TypedMessagePromise {
+
+    private _p: Promise<Message>;
+
+    constructor(p: Promise<Message>)
+    {
+        this._p = p;
+    }
+
+    private _check_or_throw(ty: string, v: any)
+    {
+        if (typeof v == ty)
+            return true;
+        else
+            throw ('Unexpected message of type ' + typeof v);
+    }
+
+    async str(): Promise<string>
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('string', v))
+            return <string>v;
+    }
+
+    async bool()
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('boolean', v))
+            return <boolean><unknown>v;
+    }
+
+    async obj()
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('object', v))
+            return <object>v;
+    }
+
+    async number()
+    {
+        let v = (await this._p).data;
+
+        if (this._check_or_throw('number', v))
+            return <number>v;
+    }
+
+    async float()
+    {
+        return this.number();
+    }
+
+    async int()
+    {
+        return Math.floor(await this.number());
+    }
+}
+
+
+export class Requester extends EventEmitter {
+
+    request_target: string;
+    connection: Connection;
+
+    constructor(connection: Connection, target: string)
+    {
+        super();
+
+        this.request_target = target;
+        this.connection     = connection;
+
+        // propagate events to the listener
+        this.connection.on(target, (msg: Message) => {
+            if (msg.mode == MessageMode.EVT)
+                this.emit(msg.field);
+        });
+    }
+
+    async request(value: string, data?: any)
+    {
+        return this.connection.request(this.request_target, value, 10000, data);
+    }
+
+    requestTyped(value: string, data?: any)
+    {
+        return new TypedMessagePromise(
+            this.connection.request(this.request_target, value, 10000, data));
+    }
+
+    async requestTmt(value: string, timeout: number, data?: any)
+    {
+        return this.connection.request(
+            this.request_target, value, timeout, data);
+    }
+
+    requestTypedWithTimeout(value: string, timeout: number, data?: any)
+    {
+        return new TypedMessagePromise(
+            this.connection.request(this.request_target, value, timeout, data));
+    }
+
+    async set(value: string, data?: any)
+    {
+        return this.connection.set(this.request_target, value, 10000, data);
+    }
+
+    setTyped(value: string, data?: any)
+    {
+        return new TypedMessagePromise(
+            this.connection.set(this.request_target, value, 10000, data));
+    }
+
+    async setTmt(value: string, timeout: number, data?: any)
+    {
+        return this.connection.set(this.request_target, value, timeout, data);
+    }
+
+    setTypedWithTimeout(value: string, timeout: number, data?: any)
+    {
+        return new TypedMessagePromise(
+            this.connection.set(this.request_target, value, timeout, data));
+    }
+
+    destroy()
+    {
+
+    }
+};
+
+
 /**
  * Represents a connection to a server in the Node
  */
@@ -73,18 +454,19 @@ export class SINodeWSClient {
     private _new_socks: SocketIOClient.Socket[] = [];
     private _id: NodeIdentification;
     private _ws_interceptors: Record<string, NodeMessageInterceptor>  = {};
-    private _ipc_interceptors: Record<string, NodeMessageInterceptor> = {};
-    private _ipc: IPCServer;
+    private _msg_interceptors: Record<string, NodeMessageInterceptor> = {};
+    private _handler: NodeMessageHandler;
 
-    constructor(config: any, ipc: IPCServer)
+    constructor(config: any, handler: NodeMessageHandler)
     {
-        this._ipc = ipc;
+        this._handler = handler;
 
-        this._ipc.on('data', this._on_ipc_msg.bind(this));
+        this._handler.on('data', this._on_ipc_msg.bind(this));
 
         this._id = {
             name : config.node_name,
-            id : unique_node_id(config.node_name)
+            id : unique_node_id(config.node_name),
+            type: NODE_TYPE.DSP_NODE
         };
 
         log.info(`Browsing for si-servers on ${defaultIF(config.interface)}`);
@@ -223,7 +605,7 @@ export class SINodeWSClient {
             if (to_ipc)
                 intc = this._ws_interceptors[m.target];
             else
-                intc = this._ipc_interceptors[m.target];
+                intc = this._msg_interceptors[m.target];
 
             _log_msg(m, to_ipc, intc == null);
 
@@ -233,7 +615,7 @@ export class SINodeWSClient {
                     .catch(this._intc_handle_return_error.bind(this, m, to_ipc));
             else {
                 if (to_ipc){
-                    if (!this._ipc.send(msg))
+                    if (!this._handler.send(msg))
                         this._ws_return_error(m, "DSP process offline");
                 }
                 else
@@ -257,7 +639,7 @@ export class SINodeWSClient {
         if(to_ipc)
             this._sock.emit('msg', msg.toString());
         else
-            this._ipc.send(msg.toString());
+            this._handler.send(msg.toString());
     }
 
     _intc_handle_return_error(msg: Message, to_ipc: boolean, data: any)
@@ -271,7 +653,7 @@ export class SINodeWSClient {
         if(to_ipc)
             this._sock.emit('msg', newmsg.toString());
         else
-            this._ipc.send(newmsg.toString());
+            this._handler.send(newmsg.toString());
     }
 
     _intc_emit_event(intc: NodeMessageInterceptor, name: string, payload: any)
@@ -286,7 +668,7 @@ export class SINodeWSClient {
 
     addIPCInterceptor(intc: NodeMessageInterceptor)
     {
-        this._ipc_interceptors[intc.target()] = intc;
+        this._msg_interceptors[intc.target()] = intc;
     }
 
     addWSInterceptor(intc: NodeMessageInterceptor)
@@ -349,7 +731,7 @@ export class SIServerWSSession extends Connection {
         }
         else {
             log.error('Unexpected exchange_ids message, trashing connection');
-            this.destroy();
+            this.close();
         }
     }
 
@@ -375,7 +757,7 @@ export class SIServerWSSession extends Connection {
         return this._id;
     }
 
-    destroy()
+    close()
     {
         this._sock.disconnect();
         this._server._on_disconnect(this);
@@ -423,6 +805,7 @@ export class SIServerWSServer extends EventEmitter {
     private _on_connection(socket: SocketIO.Socket)
     {
         let session = new SIServerWSSession(socket, this);
+        session.on('online', this._on_session_online.bind(this, session));
         this._new_sessions.push(session);
         this.emit('new-connection', session);
     }
@@ -433,8 +816,15 @@ export class SIServerWSServer extends EventEmitter {
 
         if (idx != -1) {
             log.info('Removing connection for ' + session.id().name);
-            this.emit('close-connection', session)
+            session.destroy();
+            this.emit('close-connection', session);
+            this.emit('remove-session', session);
         }
+    }
+
+    _on_session_online(session: SIServerWSSession)
+    {
+        this.addFromNewSessions(session);
     }
 
     addFromNewSessions(session: SIServerWSSession)
@@ -443,13 +833,13 @@ export class SIServerWSServer extends EventEmitter {
             log.info(`Session for ${
                 session.id()
                     .name} already exists and is online. Dropping connection.`);
-            session.destroy();
+            session.close();
         }
         else {
             log.info(`Established connection with ${session.id().name}`);
 
-            let idx = this._new_sessions.findIndex(s => s.id().id
-                                                        == session.id().id);
+            let idx = this._new_sessions.findIndex(s => s.id() && (s.id().id
+                                                        == session.id().id));
 
             if (idx != -1)
                 this._new_sessions.splice(idx, 1);
@@ -458,6 +848,7 @@ export class SIServerWSServer extends EventEmitter {
                     'Could not find session in preparation stage. Something is wrong here');
 
             this._sessions.push(session);
+            this.emit('add-session', session);
         }
     }
 

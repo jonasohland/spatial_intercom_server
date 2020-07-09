@@ -1,6 +1,9 @@
 import { EventEmitter } from 'events';
 import * as IPC from './ipc'
 import * as Logger from './log';
+import * as COM from './communication';
+import { NodeModule } from './data';
+import { VSTScanner } from './vst';
 
 const log = Logger.get('DSP');
 
@@ -481,8 +484,8 @@ export class PluginNode extends Node {
 export abstract class NativeNode extends Node {
 
     processor_type: string;
-    connection: IPC.Connection;
-    remote: IPC.Requester;
+    connection: COM.Connection;
+    remote: COM.Requester;
     native_event_name: string;
 
     constructor(name: string, native_node_type: string)
@@ -491,7 +494,7 @@ export abstract class NativeNode extends Node {
         this.processor_type = native_node_type;
     }
 
-    attachEventListener(con: IPC.Connection)
+    attachEventListener(con: COM.Connection)
     {
         this.connection        = con;
         this.native_event_name = `${this.processor_type}_${this.id}`;
@@ -519,19 +522,14 @@ export class Graph {
     modules: Module[]         = [];
 
     node_count: number = 1;
-    remote: IPC.Requester;
-    process: IPC.Connection;
 
-    constructor(process: IPC.Connection)
+    connection: COM.Connection;
+    remote: COM.Requester;
+    vst: VSTScanner;
+
+    constructor(vst: VSTScanner)
     {
-        this.process = process;
-        this.remote  = this.process.getRequester('graph');
-
-        let self = this;
-
-        this.process.on('connection', () => {
-            self.remote.request('reset').catch(err => log.error(err));
-        });
+        this.vst = vst;
     }
 
     addNode(node: Node)
@@ -542,7 +540,7 @@ export class Graph {
 
         this.nodes.push(node);
 
-        if (node instanceof NativeNode) node.attachEventListener(this.process);
+        if (node instanceof NativeNode) node.attachEventListener(this.connection);
 
         return node_id;
     }
@@ -651,30 +649,11 @@ export class Graph {
         return removed;
     }
 
-    async sync()
-    {
-        let self = this;
-
-        console.log();
-        console.log(JSON.stringify(this._export()));
-        console.log();
-
-        return new Promise<void>((resolve, reject) => {
-            log.info('Syncing graph with DSP process');
-
-            self.remote.request('set', this._export())
-            .then(() => { log.info('Done Syncing')
-                            resolve() })
-            .catch(err => { log.error('Could not sync graph: ' + err.message)
-                            reject() });
-        });
-    }
-
     rebuild() {
         this.modules.forEach(mod => mod.graphChanged(this));
     }
 
-    _export()
+    _export_graph()
     {
         let out = {
             nodes : this.nodes.map(n => {

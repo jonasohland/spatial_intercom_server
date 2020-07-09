@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import {v4 as uuid} from 'uuid';
 
-import {showfileDir} from './files'
+import {configFileDir} from './files'
 import * as logger from './log';
 
 const log = logger.get('SHOWFL');
@@ -184,11 +184,11 @@ export class ShowfileManager {
 
     constructor()
     {
-        if (!fs.existsSync(showfileDir()))
-            fs.mkdirSync(showfileDir());
+        if (!fs.existsSync(configFileDir()))
+            fs.mkdirSync(configFileDir());
 
-        if (!fs.existsSync(showfileDir('showfiles')))
-            fs.mkdirSync(showfileDir('showfiles'))
+        if (!fs.existsSync(configFileDir('showfiles')))
+            fs.mkdirSync(configFileDir('showfiles'))
     }
 
     register(t: ShowfileTarget, dependencies?: string[])
@@ -206,8 +206,8 @@ export class ShowfileManager {
 
     createEmptyShow(name: string)
     {
-        fs.mkdirSync(showfileDir('showfiles/' + name));
-        fs.writeFileSync(showfileDir(`showfiles/${name}/show.json`), '{}');
+        fs.mkdirSync(configFileDir('showfiles/' + name));
+        fs.writeFileSync(configFileDir(`showfiles/${name}/show.json`), '{}');
     }
 
     async storeShowfile()

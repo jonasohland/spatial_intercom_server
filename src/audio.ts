@@ -1,11 +1,12 @@
 import * as IPC from './ipc'
 import { threadId } from 'worker_threads';
+import { Requester, Connection } from './communication';
 
 export class DSPHost {
 
-    remote: IPC.Requester;
+    remote: Requester;
 
-    constructor(con: IPC.Connection) {
+    constructor(con: Connection) {
         this.remote = con.getRequester('dsp');
     }
 

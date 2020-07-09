@@ -82,7 +82,7 @@ const tcformat = winston.format((info, options) => {
 });
 
 
-const logfilename = files.showfileDir('logs/')
+const logfilename = files.configFileDir('logs/')
                     + new Date(Date.now()).toISOString().replace(/[.,:]/g, '_')
                     + '.log';
 
