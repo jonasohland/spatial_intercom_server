@@ -17,7 +17,6 @@ import {configFileDir} from './files';
 import * as Logger from './log';
 import {ignore} from './util';
 import WebInterface from './web_interface';
-import node_mode from './node_mode';
 
 const log = Logger.get('NSTATE');
 
@@ -106,7 +105,7 @@ export abstract class ManagedNodeStateObject<EncapsulatedType extends any> {
     _parent: ManagedNodeStateRegister;
 
     abstract async set(val: EncapsulatedType): Promise<void>;
-    abstract async get(): Promise<EncapsulatedType>;
+    abstract get(): EncapsulatedType;
 
     init(parent: ManagedNodeStateRegister)
     {
@@ -115,12 +114,12 @@ export abstract class ManagedNodeStateObject<EncapsulatedType extends any> {
         this._parent = parent;
     }
 
-    async _export()
+    _export()
     {
         return <ManagedNodeStateObjectData>
         {
             object_id: this._oid, name: this._name, uid: this._uid,
-                data: await this.get()
+            data: this.get()
         }
     }
 
@@ -272,12 +271,13 @@ export abstract class ManagedNodeStateMapRegister extends
 
     abstract async remove(name: string,
                           obj: ManagedNodeStateObject<any>): Promise<void>;
-    abstract async insert(name: string, obj: ManagedNodeStateObjectData):
+    abstract async insert(name: string, obj: any):
         Promise<ManagedNodeStateObject<any>>;
 
     async _wrap_insert(name: string, obj: ManagedNodeStateObjectData)
     {
-        let ob   = await this.insert(name, obj)
+        let ob   = await this.insert(name, obj.data)
+        ob._parent = this;
         ob._uid  = obj.uid;
         ob._oid  = obj.object_id;
         ob._name = (<any>obj).name
@@ -391,6 +391,21 @@ export abstract class ManagedNodeStateMapRegister extends
     }
 }
 
+export abstract class Publisher {
+    constructor() {
+
+    }
+
+    abstract joined(socket: SocketIO.Socket, topic: string): void;
+    abstract left(socket: SocketIO.Socket, topic: string): void;
+    abstract publish(topic: string, event: string, ...data: any[]): void;
+    abstract hasSubs(topic: string): boolean;
+
+    _pub_init(server: Server) {
+
+    }
+}
+
 export abstract class ManagedNodeStateListRegister extends
     ManagedNodeStateRegister {
     _objects: ManagedNodeStateObject<any>[] = [];
@@ -402,14 +417,15 @@ export abstract class ManagedNodeStateListRegister extends
     }
 
     abstract async remove(obj: ManagedNodeStateObject<any>): Promise<void>;
-    abstract async insert(obj: ManagedNodeStateObjectData):
+    abstract async insert(obj: any):
         Promise<ManagedNodeStateObject<any>>;
 
     private async _wrap_insert(obj: ManagedNodeStateObjectData)
     {
-        let nobj  = await this.insert(obj);
+        let nobj  = await this.insert(obj.data);
         nobj._uid = obj.uid;
         nobj._oid = obj.object_id;
+        nobj._parent = this;
         log.debug(`Inserting new object [${nobj.constructor.name}] ${
             nobj._oid} to ${this._name}`);
         return nobj;
@@ -502,6 +518,17 @@ export abstract class ManagedNodeStateListRegister extends
         }
     }
 
+    removeItem(item: ManagedNodeStateObject<any>)
+    {
+        let itemIndex = this._objects.indexOf(item);
+        if(itemIndex != -1) {
+            this._objects.splice(itemIndex, 1);
+            return true;
+        }
+        else 
+            return false;
+    }
+
     add(obj: ManagedNodeStateObject<any>)
     {
         log.debug(`Insert new object [${obj.constructor.name}] into list`);
@@ -510,9 +537,10 @@ export abstract class ManagedNodeStateListRegister extends
     }
 }
 
-export abstract class NodeModule {
+export abstract class NodeModule extends Publisher {
 
     _parent: Node;
+    _server: Server;
     _name: string;
     _uid: string;
     _data: any;
@@ -526,14 +554,26 @@ export abstract class NodeModule {
 
     constructor(target: string)
     {
+        super();
         this._name = target;
         this._uid  = uniqueId();
     }
 
-    _init(parent: Node)
+    publish(topic: string, event: string, ...data: any[])
+    {
+        this._server._do_publish_node(this.myNodeId(), this._name, topic, event, ...data);
+    }
+
+    hasSubs(topic: string) 
+    {
+        return this._server._check_node_has_subscribers(this.myNodeId(), this._name, topic);
+    }
+
+    _init(parent: Node, server: Server)
     {
         this._parent = parent;
         this.events = this._parent.events;
+        this._pub_init(server);
         this.init();
     }
 
@@ -595,6 +635,25 @@ export abstract class NodeModule {
     {
         reg.init(name, this);
         this._registers[reg._name] = reg;
+    }
+
+    isInitialized()
+    {
+        return Boolean(this._parent);
+    }
+
+    myNode()
+    {
+        return this._parent;
+    }
+
+    myNodeId()
+    {
+        let node = this.myNode();
+        if(node)
+            return node.id();
+        else
+            throw new Error("Node module not initialized");
     }
 
     async _restore(state: ManagedNodeStateModuleData,
@@ -739,7 +798,6 @@ export class NodeDataStorage extends NodeMessageInterceptor {
 
     async handleMessage(msg: Message, from_ipc: boolean)
     {
-        console.log(msg);
         switch (msg.field) {
             case 'update-object':
                 return this.updateObject(<UpdateObjectMessage>msg.data);
@@ -753,6 +811,7 @@ export class NodeDataStorage extends NodeMessageInterceptor {
 
     updateObject(msg: UpdateObjectMessage)
     {
+        console.log(JSON.stringify(msg, null, 2));
         if (this._modules[msg.module]) {
             let mod = this._modules[msg.module];
             let regidx
@@ -769,7 +828,7 @@ export class NodeDataStorage extends NodeMessageInterceptor {
                     let objectidx = listreg.objects.findIndex(
                         obj => obj.object_id == msg.data.object_id);
 
-                    if (objectidx != -1)
+                    if (objectidx == -1)
                         ignore(listreg.objects.push(msg.data));
                     else
                         ignore(listreg.objects[objectidx] = msg.data);
@@ -815,8 +874,6 @@ export class NodeDataStorage extends NodeMessageInterceptor {
 
         msg.modules.forEach(
             mod => this._check_module(output, mod.name, mod.data));
-
-        console.log(output);
 
         return output;
     }
@@ -933,7 +990,7 @@ export abstract class Node {
             this._modules[key].destroy();
     }
 
-    _init(remote: Connection, node_events: EventEmitter)
+    async _init(remote: Connection, node_events: EventEmitter, server: Server)
     {
         this.events         = node_events;
         this._remote        = remote;
@@ -943,15 +1000,16 @@ export abstract class Node {
 
         let modnames = Object.keys(this._modules);
         for (let mod of modnames) {
-            this._modules[mod]._init(this);
+            this._modules[mod]._init(this, server);
         }
 
-        this._reload_data_from_node().then(() => {
-            for (let mod of modnames) {
-                this._modules[mod]._start(remote);
-            }
-            this._start();
-        });
+        await this._reload_data_from_node()
+
+        for (let mod of modnames) {
+            this._modules[mod]._start(remote);
+        }
+        this._start();
+
     }
 
     _start()
@@ -968,7 +1026,7 @@ export abstract class Node {
                     'update-object', <UpdateObjectMessage>{
                         module : mod._name,
                         register : reg._name,
-                        data : await obj.get()
+                        data : obj._export()
                     });
             else
                 return this._state_manager.set(
@@ -1102,31 +1160,43 @@ export type WEBIFNodeEventHandler = (socket: SocketIO.Socket, node: Node, data: 
 export type WEBIFEventHandler = (socket: SocketIO.Socket, data: any) => void;
 export type TransactionID = string;
 
-export abstract class ServerModule {
+export abstract class ServerModule extends Publisher {
     
     _name: string;
     events: EventEmitter;
     server: Server;
     webif: WebInterface;
 
-    _init(srv: Server, webif: WebInterface)
+    _init(srv: Server, webif: WebInterface, events: EventEmitter)
     {
         this.webif = webif;
         this.server = srv;
+        this.events = events;
+
+        this._pub_init(this.server)
         this.init();
+    }
+
+    publish(topic: string, event: string, ...data: any[])
+    {
+        this.server._do_publish_server(this._name, topic, event, ...data);
+    }
+
+    hasSubs(topic: string) {
+        return this.server._check_server_has_subscribers(this._name, topic);
     }
 
     abstract init(): void;
 
     constructor(name: string)
     {
-        this.events = new EventEmitter();
+        super();
         this._name = name;
     }
 
     getNode(id: string)
     {
-
+        return this.server._nodes[id];
     }
 
     handle(event: string, handler: WEBIFNodeEventHandler)
@@ -1135,7 +1205,7 @@ export abstract class ServerModule {
             let node = this.server._nodes[nodeid];
             if(!node) {
                 log.error(`Node not found for message -${this._name}.${event} - node: ${nodeid}`);
-                socket.emit('error', `Node not found for id ${nodeid}`);
+                socket.emit('showerror', `Node not found for id ${nodeid}`);
                 return;
             }
             log.debug(`Dispatch event: -${this._name}.${event} - ${nodeid}`);
@@ -1152,17 +1222,31 @@ export abstract class ServerModule {
 }
 
 export class ServerInternalsModule extends ServerModule {
+
+    joined(socket: SocketIO.Socket, topic: string)
+    {   
+        socket.emit('server.nodes', this.nodeIdList());
+    }   
+
+    left(socket: SocketIO.Socket, topic: string)
+    {
+    }
+
+    nodesChanged()
+    {
+        this.publish('nodes', 'server.nodes', this.nodeIdList());
+    }
+    
+    nodeIdList()
+    {
+        let ids = Object.keys(this.server._nodes);
+        let out: NodeIdentification[] = [];
+        for(let id of ids)
+            out.push(this.server._nodes[id]._id);
+        return out;
+    }
+
     init() {
-        this.handleGlobal('nodes', (socket, data) => {
-            let ids = Object.keys(this.server._nodes);
-            let out: NodeIdentification[] = [];
-            for(let id of ids)
-                out.push(this.server._nodes[id]._id);
-
-            log.info(`Sending node information`);
-
-            socket.emit('server.nodes', out);
-        });
     }
 
     constructor()
@@ -1171,13 +1255,14 @@ export class ServerInternalsModule extends ServerModule {
     }
 }
 
-export abstract class Server {
+export abstract class Server  {
 
     _srv: SIServerWSServer
     _nodes: Record<string, Node> = {};
     _modules: Record<string, ServerModule> = {};
     _webif: WebInterface;
     _event_bus: EventEmitter;
+    _internals: ServerInternalsModule;
 
     constructor(wssrv: SIServerWSServer, webif: WebInterface)
     {
@@ -1186,13 +1271,14 @@ export abstract class Server {
         this._webif = webif;
         this._srv.on('add-session', this._on_add_remote.bind(this));
         this._srv.on('remove-session', this._on_remove_remote.bind(this));
-        this.add(new ServerInternalsModule());
+        this._internals = new ServerInternalsModule();
+        this.add(this._internals);
     }
 
     add(module: ServerModule)
     {
         this._modules[module._name] = module;
-        module._init(this, this._webif);
+        module._init(this, this._webif, this._event_bus);
     }
 
     _on_add_remote(session: SIServerWSSession)
@@ -1200,8 +1286,11 @@ export abstract class Server {
         log.info(`Create new node instance for [${
             NODE_TYPE[session.id().type]}] ${session.id().name}`);
         let node               = this.createNode(session.id());
-        this._nodes[node.id()] = node;
-        node._init(session, this._event_bus);
+
+        node._init(session, this._event_bus, this).then(() => {
+            this._nodes[node.id()] = node;
+            this._internals.nodesChanged();
+        });
     }
 
     _on_remove_remote(session: SIServerWSSession)
@@ -1213,7 +1302,68 @@ export abstract class Server {
             node._destroy();
             this.destroyNode(node);
             delete this._nodes[session.id().id];
+            this._internals.nodesChanged();
         }
+    }
+
+    _check_server_has_subscribers(module: string, topic: string) 
+    {
+        return this._webif.checkServerHasSubscribers(module, topic);
+    }
+
+    _check_node_has_subscribers(nodeid: string, module: string, topic: string)
+    {
+        return this._webif.checkNodeHasSubscribers(nodeid, module, topic);
+    }
+
+    _do_publish_server(module: string, topic: string, event: string, ...data: any[])
+    {
+        this._webif.doPublishServer(module, topic, event, ...data);
+    }
+
+    _do_publish_node(nodeid: string, module: string, topic: string, event: string, ...data: any[])
+    {
+        this._webif.doPublishNode(nodeid, module, topic, event);
+    }
+
+    _notify_join_server_room(socket: SocketIO.Socket, module: string, topic: string)
+    {
+        if(this._modules[module])
+            this._modules[module].joined(socket, topic);
+        else
+            log.warn(`Server module '${module}' not found. Could not deliver join notification`);
+    }
+
+    _notify_join_node_room(socket: SocketIO.Socket, nodeid: string, module: string, topic: string)
+    {
+        if(this._nodes[nodeid]) {
+            if(this._nodes[nodeid]._modules[module])
+                this._nodes[nodeid]._modules[module].joined(socket, topic);
+            else
+                log.warn(`Node module '${module}' not found. Could not deliver join notification`);
+        } 
+        else 
+            log.warn(`Node ${nodeid} not found. Could not deliver join notification`);
+    }
+
+    _notify_leave_server_room(socket: SocketIO.Socket, module: string, topic: string)
+    {
+        if(this._modules[module])
+            this._modules[module].left(socket, topic);
+        else
+            log.warn(`Server module '${module}' not found. Could not deliver leave notification`);
+    }
+
+    _notify_leave_node_room(socket: SocketIO.Socket, nodeid: string, module: string, topic: string)
+    {
+        if(this._nodes[nodeid]) {
+            if(this._nodes[nodeid]._modules[module])
+                this._nodes[nodeid]._modules[module].left(socket, topic);
+            else
+                log.warn(`Node module '${module}' not found. Could not deliver leave notification`);
+        } 
+        else 
+            log.warn(`Node ${nodeid} not found. Could not deliver leave notification`);
     }
 
     abstract createNode(id: NodeIdentification): Node;

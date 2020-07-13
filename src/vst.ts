@@ -35,6 +35,16 @@ export class VSTScanner extends NodeModule {
         super('vst-scanner');
     }
 
+    joined(socket: SocketIO.Socket, topic: string)
+    {
+
+    }
+
+    left(socket: SocketIO.Socket, topic: string)
+    {
+        
+    }
+
     async waitPluginsScanned() {
 
         await this.requester.requestTmt('wait-scanned', 60000);

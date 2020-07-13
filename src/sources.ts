@@ -1,4 +1,4 @@
-import { PortTypes } from './dsp';
+import { PortTypes } from './dsp_defs';
 import { SourceSets } from './source_behaviours';
 
 export interface Source {

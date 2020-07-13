@@ -5,12 +5,10 @@ import {
     Graph,
     Module,
     NativeNode,
-    PluginNode,
-    PortTypes
 } from './dsp'
 import * as IPC from './ipc'
 import * as Logger from './log';
-import {OwnedInput, User} from './users';
+import {OwnedInput, OLDUser} from './users';
 import * as VST from './vst'
 
 const log = Logger.get('DSP');
@@ -155,7 +153,7 @@ export abstract class SpatializationModule extends Module {
 
 export class BasicSpatializerModule extends SpatializationModule {
 
-    constructor(input: OwnedInput, user: User)
+    constructor(input: OwnedInput, user: OLDUser)
     {
         super();
         this.owned_input = input;
@@ -165,7 +163,7 @@ export class BasicSpatializerModule extends SpatializationModule {
     encoder_nid: number = -1;
     id: number          = -1;
     owned_input: OwnedInput;
-    user: User;
+    user: OLDUser;
     inputConn: Connection;
     outputConn: Connection;
     processor: BasicSpatializer;
@@ -277,7 +275,7 @@ export class AdvancedSpatializerModule extends SpatializationModule {
             this.processorR.remote.set('room_character', character);
     }
 
-    constructor(input: OwnedInput, user: User)
+    constructor(input: OwnedInput, user: OLDUser)
     {
         super();
         this.owned_input = input;
@@ -288,7 +286,7 @@ export class AdvancedSpatializerModule extends SpatializationModule {
     encoder_r_nid: number = -1;
     id: number            = -1;
     owned_input: OwnedInput;
-    user: User;
+    user: OLDUser;
     inputConnL: Connection;
     inputConnR: Connection;
     processorL: AdvancedSpatializer;
@@ -390,13 +388,13 @@ export class BasicUserModule extends Module {
 
     decoder_nid: number = -1;
     id: number          = -1;
-    user: User
+    user: OLDUser
     outputConn: Connection;
     inputCons: Connection[] = [];
     graph: Graph;
     node: AdvancedBinauralDecoder;
 
-    constructor(user: User)
+    constructor(user: OLDUser)
     {
         super();
         this.user = user;

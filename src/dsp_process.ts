@@ -227,6 +227,16 @@ export class DSPController extends NodeModule {
         });
     }
 
+    joined(socket: SocketIO.Socket, topic: string)
+    {
+
+    }
+
+    left(socket: SocketIO.Socket, topic: string)
+    {
+        
+    }
+
     _remote: Requester;
     _remote_graph: Requester;
     _running: boolean;

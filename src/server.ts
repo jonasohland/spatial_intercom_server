@@ -4,7 +4,7 @@ import { AudioDevices } from './audio_devices'
 import {SIServerWSServer, SIServerWSSession, NodeIdentification, NODE_TYPE} from './communication';
 import {DSPController} from './dsp_process';
 import {Headtracking} from './headtracking'
-import * as Inputs from './inputs';
+import { AudioInputsManager } from './inputs';
 import {SIDSPNode} from './instance';
 import * as Logger from './log'
 import {ShowfileManager, ShowfileTarget} from './showfiles';
@@ -12,6 +12,7 @@ import * as tc from './timecode';
 import WebInterface from './web_interface';
 import { StateUpdateStrategy, Server, Node } from './data';
 import { DSPNode } from './dsp_node';
+import { UsersManager } from './users';
 
 const log = Logger.get('SERVER');
 
@@ -31,14 +32,22 @@ export class SpatialIntercomServer extends Server {
 
     webif: WebInterface;
     audio_devices: AudioDevices;
+    inputs: AudioInputsManager;
+    users: UsersManager;
 
     constructor(config: any)
     {
         let webif = new WebInterface(config);
         super(new SIServerWSServer(config), webif);
+        webif.attachServer(this);
 
         this.webif = webif;
         this.audio_devices = new AudioDevices();
+        this.inputs = new AudioInputsManager();
+        this.users = new UsersManager();
+        this.add(this.webif);
         this.add(this.audio_devices);
+        this.add(this.inputs);
+        this.add(this.users);
     }
 }

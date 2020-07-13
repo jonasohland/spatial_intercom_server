@@ -388,7 +388,7 @@ export class Requester extends EventEmitter {
         // propagate events to the listener
         this.connection.on(target, (msg: Message) => {
             if (msg.mode == MessageMode.EVT)
-                this.emit(msg.field);
+                this.emit(msg.field, msg);
         });
     }
 

@@ -5,6 +5,7 @@ import { DSPController } from './dsp_process';
 import { Graph } from './dsp';
 import { VSTScanner } from './vst';
 import { NodeAudioDevices } from './audio_devices';
+import { NodeUsersManager } from './users';
 
 export class DSPNode extends Node {
 
@@ -22,6 +23,7 @@ export class DSPNode extends Node {
     }
 
     inputs: NodeAudioInputManager;
+    users: NodeUsersManager;
     vst: VSTScanner;
     dsp_graph: Graph;
     dsp_process: DSPController;
@@ -31,10 +33,12 @@ export class DSPNode extends Node {
     {
         super(id);
         this.inputs = new NodeAudioInputManager();
+        this.users = new NodeUsersManager();
         this.vst = new VSTScanner();
         this.dsp_process = new DSPController(this.vst);
         this.audio_devices = new NodeAudioDevices();
         this.add(this.inputs);
+        this.add(this.users);
         this.add(this.dsp_process);
         this.add(this.vst);
         this.add(this.audio_devices);

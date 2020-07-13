@@ -7,6 +7,10 @@ import * as Logger from './log';
 import { Headtracking } from './headtracking';
 import * as IP from 'ip';
 import WebInterface from './web_interface';
+import { NodeModule, ServerModule, ManagedNodeStateListRegister, ManagedNodeStateObject } from './data';
+import { Connection } from './communication';
+import { UserData } from './users_defs';
+import { fromPairs } from 'lodash';
 
 const log = Logger.get('USR');
 
@@ -50,11 +54,11 @@ interface WEBIFNodesAndUsers {
 
 export interface NodeAndUsers {
     si: Instance.SIDSPNode;
-    users: User[];
+    users: OLDUser[];
 }
 
 
-export class User {
+export class OLDUser {
 
     id: number;
     name: string;
@@ -142,7 +146,7 @@ export class User {
     }
 }
 
-export class UsersManager extends EventEmitter {
+export class OLDUsersManager extends EventEmitter {
 
     users: NodeAndUsers[] = [];
     webif: WebInterface;
@@ -442,4 +446,85 @@ export class UsersManager extends EventEmitter {
             (<AdvancedSpatializerModule> input.dspModule).setRoomCharacter(value);
         });
     }
+}
+
+class User extends ManagedNodeStateObject<UserData> {
+
+    data: UserData;
+    
+    constructor(data: UserData) {
+        super();
+        this.data = data
+    }
+
+    async set(val: UserData) {
+    }
+    get(): UserData {
+        return this.data;
+    }
+
+}
+
+class UserList extends ManagedNodeStateListRegister {
+
+    async remove(obj: ManagedNodeStateObject<any>) {
+    }
+    async insert(obj: any): Promise<User> {
+        return new User(obj);
+    }
+
+}
+
+export class NodeUsersManager extends NodeModule {
+
+    _users: UserList;
+
+    constructor() {
+        super('nodeusers');
+        this._users = new UserList();
+        this.add(this._users, 'users');
+    }
+
+    joined(socket: SocketIO.Socket, topic: string)
+    {
+
+    }
+
+    left(socket: SocketIO.Socket, topic: string)
+    {
+        
+    }
+
+    init() {
+    }
+
+    start(remote: Connection) {
+        this.save().catch(err => {
+            log.error('Could write data to node ' + err);
+        });
+    }
+    destroy() {
+    }
+
+}
+
+export class UsersManager extends ServerModule {
+
+    constructor() {
+        super('users');
+    }
+
+    joined(socket: SocketIO.Socket, topic: string)
+    {
+
+    }
+
+    left(socket: SocketIO.Socket, topic: string)
+    {
+        
+    }
+
+    init() {
+    }
+
 }

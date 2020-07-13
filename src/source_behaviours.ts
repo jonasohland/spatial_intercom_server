@@ -1,4 +1,4 @@
-import {PortTypes} from './dsp';
+import {PortTypes} from './dsp_defs';
 import {SoundSource, Source, SourceParameterSet, SourceSet} from './sources'
 
 export abstract class SourceBehaviour {
