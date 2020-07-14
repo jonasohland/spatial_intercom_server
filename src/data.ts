@@ -572,6 +572,7 @@ export abstract class NodeModule extends Publisher {
     _init(parent: Node, server: Server)
     {
         this._parent = parent;
+        this._server = server;
         this.events = this._parent.events;
         this._pub_init(server);
         this.init();
@@ -819,9 +820,19 @@ export class NodeDataStorage extends NodeMessageInterceptor {
             if (regidx != -1) {
                 let reg = mod.registers[regidx];
                 if (reg.map) {
-                    (<ManagedNodeStateMapRegisterData>reg)
+                    if((<ManagedNodeStateMapRegisterData>reg)
+                        .objects[(<any>msg.data).name] == null) {
+
+                            (<ManagedNodeStateMapRegisterData>reg)
+                            .objects[(<any>msg.data).name] = { data: msg.data.data, object_id: msg.data.object_id, uid: msg.data.uid };
+                    } else {
+                        let obj = (<ManagedNodeStateMapRegisterData>reg)
                         .objects[(<any>msg.data).name]
-                        = msg.data.data;
+
+                            obj.data = msg.data.data;
+                            obj.object_id = msg.data.object_id;
+                            obj.uid = msg.data.uid;
+                    }
                 }
                 else {
                     let listreg   = <ManagedNodeStateListRegisterData>reg;
@@ -1323,7 +1334,7 @@ export abstract class Server  {
 
     _do_publish_node(nodeid: string, module: string, topic: string, event: string, ...data: any[])
     {
-        this._webif.doPublishNode(nodeid, module, topic, event);
+        this._webif.doPublishNode(nodeid, module, topic, event, ...data);
     }
 
     _notify_join_server_room(socket: SocketIO.Socket, module: string, topic: string)

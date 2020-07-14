@@ -13,6 +13,7 @@ import WebInterface from './web_interface';
 import { StateUpdateStrategy, Server, Node } from './data';
 import { DSPNode } from './dsp_node';
 import { UsersManager } from './users';
+import { Rooms } from './rooms';
 
 const log = Logger.get('SERVER');
 
@@ -34,6 +35,7 @@ export class SpatialIntercomServer extends Server {
     audio_devices: AudioDevices;
     inputs: AudioInputsManager;
     users: UsersManager;
+    rooms: Rooms;
 
     constructor(config: any)
     {
@@ -45,9 +47,11 @@ export class SpatialIntercomServer extends Server {
         this.audio_devices = new AudioDevices();
         this.inputs = new AudioInputsManager();
         this.users = new UsersManager();
+        this.rooms = new Rooms();
         this.add(this.webif);
         this.add(this.audio_devices);
         this.add(this.inputs);
         this.add(this.users);
+        this.add(this.rooms);
     }
 }
