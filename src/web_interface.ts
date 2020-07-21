@@ -5,11 +5,12 @@ import SocketIO from 'socket.io';
 
 import * as Logger from './log';
 import {defaultIF} from './util';
-import { ServerModule, Node, Server } from './data';
-import { EventEmitter } from 'events';
+import { ServerModule, Node, Server } from './core';
+import { getWebinterfaceAdvertiser } from './discovery';
 
 import { nodeRoomName, serverRoomName } from './web_interface_defs'
 import _ from 'lodash';
+import { Advertisement } from 'dnssd';
 
 const log = Logger.get('WEBINT');
 
@@ -180,6 +181,7 @@ export default class WebInterface extends ServerModule {
     private _webif_root: string = __dirname + '/../../../interface/dist';
     private _server: Server;
     private _clients: WebInterfaceClient[] = [];
+    private _web_interface_advertiser: Advertisement;
 
     joined(socket: SocketIO.Socket)
     {
@@ -241,6 +243,8 @@ export default class WebInterface extends ServerModule {
 
         if (options.webserver !== false) {
             this._http.listen(options.webserver_port, options.web_interface);
+            this._web_interface_advertiser = getWebinterfaceAdvertiser(options.webserver_port, options.web_interface);
+            this._web_interface_advertiser.start();
             log.info(`Serving webinterface on ${
                 defaultIF(options.web_interface)}:${options.webserver_port}`);
         }
@@ -330,10 +334,10 @@ export default class WebInterface extends ServerModule {
     broadcastError(title: string, err: any)
     {
         if(err instanceof Error) {
-            this.io.emit('error', title, err.message);
+            this.io.emit('showerror', title, err.message);
         } 
         else if(typeof err == 'string') {
-            this.io.emit('error', title, err);
+            this.io.emit('showerror', title, err);
         } else {
             log.error("Unrecognized error type: Error: " + err);
         }

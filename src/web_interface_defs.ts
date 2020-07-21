@@ -1,3 +1,7 @@
+export interface KeyWithValue {
+    key: string,
+    value: any
+}
 
 export function webifResponseEvent(nodeid: string, modulename: string, event: string)
 {

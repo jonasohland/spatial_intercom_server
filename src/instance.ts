@@ -3,7 +3,7 @@ import io from 'socket.io'
 import winston, { add } from 'winston'
 
 import * as AudioDevices from './audio_devices'
-import * as DSP from './dsp'
+import * as DSP from './dsp_graph'
 import * as VST from './vst';
 import * as Logger from './log'
 import { Connection } from './communication'

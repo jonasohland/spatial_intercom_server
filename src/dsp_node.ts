@@ -1,12 +1,16 @@
-import { Node } from './data';
+import { Node } from './core';
 import { NodeIdentification } from './communication';
 import { NodeAudioInputManager } from './inputs';
 import { DSPController } from './dsp_process';
-import { Graph } from './dsp';
+import { Graph } from './dsp_graph';
 import { VSTScanner } from './vst';
 import { NodeAudioDevices } from './audio_devices';
 import { NodeUsersManager } from './users';
 import { NodeRooms } from './rooms';
+
+import { v1 as uuid } from 'uuid';
+
+console.log(uuid());
 
 export class DSPNode extends Node {
 

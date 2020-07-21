@@ -5,7 +5,7 @@ import {
     ManagedNodeStateObjectData,
     NodeModule,
     ServerModule
-} from './data';
+} from './core';
 import {DSPNode} from './dsp_node';
 import * as Logger from './log'
 import { lowerFirst } from 'lodash';

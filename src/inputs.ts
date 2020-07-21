@@ -4,7 +4,7 @@ import {
     ManagedNodeStateObject,
     NodeModule,
     ServerModule
-} from './data';
+} from './core';
 import {PortTypes} from './dsp_defs';
 import {DSPNode} from './dsp_node';
 import {NodeAudioInputDescription} from './inputs_defs';

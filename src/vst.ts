@@ -1,7 +1,7 @@
 import * as ipc from './ipc'
 import * as Logger from './log'
 import { Requester, Connection } from './communication';
-import { NodeModule } from './data';
+import { NodeModule } from './core';
 
 const log = Logger.get("VST");
 

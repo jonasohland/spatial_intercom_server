@@ -1,10 +1,10 @@
-import { EventEmitter } from 'events';
+import {EventEmitter} from 'events';
+
+import * as COM from './communication';
+import {PortTypeChannelCount, PortTypes, stringToPortType} from './dsp_defs'
 import * as IPC from './ipc'
 import * as Logger from './log';
-import * as COM from './communication';
-import { NodeModule } from './data';
-import { VSTScanner } from './vst';
-import { PortTypes, PortTypeChannelCount, stringToPortType } from './dsp_defs'
+import {VSTScanner} from './vst';
 
 const log = Logger.get('DSP');
 
@@ -80,7 +80,8 @@ export class Connection {
 
     channelCount()
     {
-        if (!this.valid()) throw Error('Invalid connection');
+        if (!this.valid())
+            throw Error('Invalid connection');
 
         return this.srcChannelCount();
     }
@@ -121,7 +122,8 @@ export class Bus {
     channelCount()
     {
         let count = 0;
-        for (let port of this.ports) count += port.c;
+        for (let port of this.ports)
+            count += port.c;
         return count;
     }
 
@@ -150,9 +152,7 @@ export class Bus {
         return this.connectIdxNIdx(other, thisIndex, 1, otherIndex);
     }
 
-    connectIdxNIdx(other: Bus,
-                   thisIndex: number,
-                   thisCount: number,
+    connectIdxNIdx(other: Bus, thisIndex: number, thisCount: number,
                    otherIndex: number)
     {
         let sources: Port[]      = [];
@@ -387,7 +387,8 @@ export class Node extends EventEmitter {
         this.outputs.forEach(b => b._set_nodeid(-1));
         this.inputs.forEach(b => b._set_nodeid(-1));
 
-        if (autoremove) this._remove_invalid_connections();
+        if (autoremove)
+            this._remove_invalid_connections();
     }
 }
 
@@ -468,13 +469,13 @@ export class Graph {
 
     addNode(node: Node)
     {
-        let node_id = this.node_count;
-        ++this.node_count;
+        let node_id = this.node_count++;
         node._set_nodeid(node_id);
 
         this.nodes.push(node);
 
-        if (node instanceof NativeNode) node.attachEventListener(this.connection);
+        if (node instanceof NativeNode)
+            node.attachEventListener(this.connection);
 
         return node_id;
     }
@@ -501,7 +502,8 @@ export class Graph {
             rmv_node = this.nodes.splice(
                 this.nodes.findIndex(n => n.id === node), 1)[0];
 
-        if (rmv_node) rmv_node._unset_nodeid(true);
+        if (rmv_node)
+            rmv_node._unset_nodeid(true);
 
         this.fix();
 
@@ -572,18 +574,19 @@ export class Graph {
     {
         let mod_idx = this.modules.indexOf(mod);
 
-        if(mod_idx == -1)
-            return null && log.error("Could not find Module to remove");
+        if (mod_idx == -1)
+            return null && log.error('Could not find Module to remove');
 
         let removed = this.modules.splice(mod_idx, 1)[0];
-        
-        if(removed) 
+
+        if (removed)
             removed.destroy(this);
 
         return removed;
     }
 
-    rebuild() {
+    rebuild()
+    {
         this.modules.forEach(mod => mod.graphChanged(this));
     }
 
@@ -591,16 +594,17 @@ export class Graph {
     {
         let out = {
             nodes : this.nodes.map(n => {
-
-                let obj = <any> {}
+                let obj = <any>
+                {
+                }
 
                 obj.ins_count  = n.mainIn() ? n.mainIn().channelCount() : 0;
                 obj.outs_count = n.mainOut() ? n.mainOut().channelCount() : 0;
 
-                obj.id = n.id;
-                obj.type = n.type;
-                obj.name = n.name;
-                obj.processor_type = (<NativeNode> n).processor_type;
+                obj.id             = n.id;
+                obj.type           = n.type;
+                obj.name           = n.name;
+                obj.processor_type = (<NativeNode>n).processor_type;
 
                 return obj;
             }),

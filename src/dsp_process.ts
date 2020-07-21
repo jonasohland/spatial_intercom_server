@@ -9,8 +9,8 @@ import { ignore, promisifyEventWithTimeout } from './util';
 
 // i will have to write this myself
 import eventToPromise from 'event-to-promise';
-import { Node, NodeModule } from './data';
-import { Graph } from './dsp';
+import { Node, NodeModule } from './core';
+import { Graph } from './dsp_graph';
 import { VSTScanner } from './vst';
 
 const log = Logger.get("DSPROC");

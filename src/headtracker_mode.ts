@@ -226,7 +226,7 @@ function runLatencyTest(p: SerialPort, options: any) {
 }
 
 function runNormalMode(p: SerialPort, options: any) {
-    let headtracking = new Headtracking(new WebInterface(options), sfman);
+    let headtracking = new Headtracking(new WebInterface(options));
 
     if (options.oscControl)
         new OSCController(headtracking, options);

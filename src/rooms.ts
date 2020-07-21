@@ -1,8 +1,9 @@
-import { ServerModule, NodeModule, ManagedNodeStateListRegister, ManagedNodeStateObject, ManagedNodeStateMapRegister } from "./data";
+import { ServerModule, NodeModule, ManagedNodeStateListRegister, ManagedNodeStateObject, ManagedNodeStateMapRegister } from "./core";
 import { Connection } from "./communication";
 import { defaultRoom, RoomData } from './rooms_defs';
 import * as Logger from './log';
 import { DSPNode } from "./dsp_node";
+import { KeyWithValue } from "./web_interface_defs";
 
 const log = Logger.get('NROOMS');
 
@@ -109,6 +110,22 @@ export class Rooms extends ServerModule {
 
         this.handle('modify', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
             node.rooms.updateRoom(data);
+        });
+
+        this.handle('set-main', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+            console.log(`SET [main] [${data.key}] ${data.value}`);
+        });
+
+        this.handle('set-attn', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+            console.log(`SET [attn] [${data.key}] ${data.value}`);
+        });
+
+        this.handle('set-room', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+            console.log(`SET [room] [${data.key}] ${data.value}`);
+        });
+
+        this.handle('set-eq', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+            console.log(`SET [eq] [${data.key}] ${data.value}`);
         });
     }
 

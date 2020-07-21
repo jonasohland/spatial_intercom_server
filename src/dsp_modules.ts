@@ -5,7 +5,7 @@ import {
     Graph,
     Module,
     NativeNode,
-} from './dsp'
+} from './dsp_graph'
 import * as IPC from './ipc'
 import * as Logger from './log';
 import {OwnedInput, OLDUser} from './users';

@@ -15,6 +15,7 @@ import { Headtracker,
 
 import { ShowfileTarget, Showfile, ShowfileManager } from './showfiles';
 import WebInterface from './web_interface';
+import { ServerModule } from './core';
 
 // import mkbonjour, { Bonjour, Browser } from 'bonjour-hap';
 
@@ -22,7 +23,19 @@ let comCheckInterval = 10000;
 
 const log = Logger.get('HTKHST');
 
-export class Headtracking extends ShowfileTarget {
+export class Headtracking extends ServerModule {
+
+    init() {
+
+    }
+
+    joined(sock: SocketIO.Socket, topic: string) {
+
+    }
+
+    left() {
+
+    }
 
     onShowfileLoad(s: Showfile): void {
         log.info("")
@@ -43,9 +56,9 @@ export class Headtracking extends ShowfileTarget {
 
     webif: WebInterface;
 
-    constructor(interf: WebInterface, man: ShowfileManager, netif?: string)
+    constructor(interf: WebInterface, netif?: string)
     {
-        super();
+        super('headtracking');
 
         this.local_interface = netif;
         this.webif          = interf;
@@ -60,8 +73,6 @@ export class Headtracking extends ShowfileTarget {
         this.browser.start();
 
         let self = this;
-
-        man.register(this);
 
         this.webif.io.on('connection', socket => {
             socket.on('htrk.update.req', () => {

@@ -17,6 +17,7 @@ import {configFileDir} from './files';
 import * as Logger from './log';
 import {ignore} from './util';
 import WebInterface from './web_interface';
+import { option } from 'commander';
 
 const log = Logger.get('NSTATE');
 
@@ -722,7 +723,7 @@ export class NodeDataStorage extends NodeMessageInterceptor {
     _saving: boolean     = false;
     _save_again: boolean = false
 
-    constructor(config: any)
+    constructor(config: any, options: any)
     {
         super();
         this._local_file = configFileDir('nodestate/')
@@ -730,6 +731,12 @@ export class NodeDataStorage extends NodeMessageInterceptor {
                            + '.json';
         if (!fs.existsSync(configFileDir('nodestate')))
             fs.mkdirSync(configFileDir('nodestate'));
+
+        if(options.reset) {
+            if(fs.existsSync(this._local_file))
+                fs.unlinkSync(this._local_file);
+        }
+
         if (!fs.existsSync(this._local_file)) {
             fs.writeFileSync(this._local_file, JSON.stringify({ modules : {} }))
         }
