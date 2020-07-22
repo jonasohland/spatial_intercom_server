@@ -9,20 +9,17 @@ import {
     HeadtrackerConfigFlags,
     HeadtrackerConfigPacket,
     HeadtrackerDataPacket,
-    HeadtrackerInvertation,
-    HeadtrackerNetworkFlags,
-    HeadtrackerNetworkSettings,
     HeadtrackerStateFlags,
-    Quaternion
 } from './headtracker';
+
 import {} from './headtracker_network'
 import {
     LocalHeadtracker,
     QuaternionContainer,
     UDPOutputAdapter
 } from './headtracker_serial';
+
 import * as Logger from './log';
-import {ShowfileManager} from './showfiles'
 import * as util from './util';
 
 const log = Logger.get('BRIDGE');
@@ -42,7 +39,6 @@ class SIOutputAdapter extends UDPOutputAdapter {
 
     process(q: QuaternionContainer): void
     {
-        log.info('Output Quaternion.');
         let { buffer, offset } = q.data();
 
         if (q.float())

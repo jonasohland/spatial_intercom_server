@@ -2,7 +2,7 @@ import { ServerModule, NodeModule, ManagedNodeStateListRegister, ManagedNodeStat
 import { Connection } from "./communication";
 import { defaultRoom, RoomData } from './rooms_defs';
 import * as Logger from './log';
-import { DSPNode } from "./dsp_node";
+import { DSPNode, DSPModuleNames } from "./dsp_node";
 import { KeyWithValue } from "./web_interface_defs";
 
 const log = Logger.get('NROOMS');
@@ -94,7 +94,7 @@ export class NodeRooms extends NodeModule {
 
     constructor()
     {
-        super('rooms');
+        super(DSPModuleNames.ROOMS);
         this._rooms = new NodeRoomsList();
         this.add(this._rooms, 'rooms');
     }
@@ -104,27 +104,27 @@ export class Rooms extends ServerModule {
 
     init(): void {
 
-        this.handle('reset', (socket: SocketIO.Socket, node: DSPNode, room: string) => {
+        this.handleWebInterfaceEvent('reset', (socket: SocketIO.Socket, node: DSPNode, room: string) => {
 
         });
 
-        this.handle('modify', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
+        this.handleWebInterfaceEvent('modify', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
             node.rooms.updateRoom(data);
         });
 
-        this.handle('set-main', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+        this.handleWebInterfaceEvent('set-main', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
             console.log(`SET [main] [${data.key}] ${data.value}`);
         });
 
-        this.handle('set-attn', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+        this.handleWebInterfaceEvent('set-attn', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
             console.log(`SET [attn] [${data.key}] ${data.value}`);
         });
 
-        this.handle('set-room', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+        this.handleWebInterfaceEvent('set-room', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
             console.log(`SET [room] [${data.key}] ${data.value}`);
         });
 
-        this.handle('set-eq', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
+        this.handleWebInterfaceEvent('set-eq', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
             console.log(`SET [eq] [${data.key}] ${data.value}`);
         });
     }

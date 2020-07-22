@@ -169,6 +169,7 @@ export class NetworkHeadtracker extends Headtracker {
                 this.remote.conf = p;
                 this.local.conf  = p;
                 this._setState(HTRKDevState.CONNECTED);
+                this.emit("connected");
                 this._updateRemote();
                 this._askAliveLater();
                 return;

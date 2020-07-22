@@ -6,10 +6,11 @@ import {
     NodeModule,
     ServerModule
 } from './core';
-import {DSPNode} from './dsp_node';
+import {DSPNode, DSPModuleNames} from './dsp_node';
 import * as Logger from './log'
 import { lowerFirst } from 'lodash';
 import { webifResponseEvent } from './web_interface_defs';
+import { GraphBuilderInputEvents } from './dsp_graph_builder';
 
 const log = Logger.get('AUDDEV');
 
@@ -478,7 +479,7 @@ export class NodeAudioDevices extends NodeModule {
 
     constructor()
     {
-        super('node-audio-devices');
+        super(DSPModuleNames.AUDIO_DEVICES);
 
         this._settings = new NodeAudioDeviceSettings(this);
         this.add(this._settings, 'audio-device-settings');
@@ -499,7 +500,7 @@ export class AudioDevices extends ServerModule {
 
     init()
     {
-        this.handle('update', (socket, node: DSPNode, data) => {
+        this.handleWebInterfaceEvent('update', (socket, node: DSPNode, data) => {
             log.info(`Refreshing audio device data for node ${node.name()}`);
             node.audio_devices.getNodeDevicesInformation()
                 .then((data) => {
@@ -508,34 +509,37 @@ export class AudioDevices extends ServerModule {
                 .catch(this.endTransactionWithError.bind(this, socket));
         });
 
-        this.handle('inputdevice', (socket, node: DSPNode, data) => {
+        this.handleWebInterfaceEvent('inputdevice', (socket, node: DSPNode, data) => {
             node.audio_devices.setInputDevice(data)
                 .then(this.endTransaction.bind(this, socket))
                 .catch(this.endTransactionWithError.bind(this, socket));
         });
 
-        this.handle('outputdevice', (socket, node: DSPNode, data) => {
+        this.handleWebInterfaceEvent('outputdevice', (socket, node: DSPNode, data) => {
             node.audio_devices.setOutputDevice(data)
                 .then(this.endTransaction.bind(this, socket))
                 .catch(this.endTransactionWithError.bind(this, socket));
         });
 
-        this.handle('buffersize', (socket, node: DSPNode, data: number) => {
+        this.handleWebInterfaceEvent('buffersize', (socket, node: DSPNode, data: number) => {
             node.audio_devices.setBuffersize(data)
                 .then(this.endTransaction.bind(this, socket))
                 .catch(this.endTransactionWithError.bind(this, socket));
         });
 
-        this.handle('samplerate', (socket, node: DSPNode, data: number) => {
+        this.handleWebInterfaceEvent('samplerate', (socket, node: DSPNode, data: number) => {
             node.audio_devices.setSamplerate(data)
                 .then(this.endTransaction.bind(this, socket))
                 .catch(this.endTransactionWithError.bind(this, socket));
         });
 
-        this.handle('dspenabled', (socket, node: DSPNode, data: boolean) => {
+        this.handleWebInterfaceEvent('dspenabled', (socket, node: DSPNode, data: boolean) => {
             if (data) {
                 node.audio_devices.enable()
-                    .then(this.endTransaction.bind(this, socket))
+                    .then(() => {
+                        socket.emit('audiosettings.done');
+                        this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.FULL_REBUILD);
+                    })
                     .catch(this.endTransactionWithError.bind(this, socket));
             }
             else {
@@ -545,7 +549,7 @@ export class AudioDevices extends ServerModule {
             }
         });
 
-        this.handle('open', (socket, node: DSPNode, data: boolean) => {
+        this.handleWebInterfaceEvent('open', (socket, node: DSPNode, data: boolean) => {
             if (data) {
                 node.audio_devices.open()
                     .then(this.endTransaction.bind(this, socket))
@@ -558,11 +562,11 @@ export class AudioDevices extends ServerModule {
             }
         });
 
-        this.handle('dspuse', (socket, node: DSPNode) => {
+        this.handleWebInterfaceEvent('dspuse', (socket, node: DSPNode) => {
 
                               });
 
-        this.handle('channellist', (socket, node: DSPNode) => {
+        this.handleWebInterfaceEvent('channellist', (socket, node: DSPNode) => {
             node.audio_devices.getChannelList().then(chlist => {
                 console.log(webifResponseEvent(node.id(), 'audiosettings', 'channellist'));
                 socket.emit(webifResponseEvent(node.id(), 'audiosettings', 'channellist'), chlist);

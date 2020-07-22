@@ -439,7 +439,7 @@ export class Requester extends EventEmitter {
 
     destroy()
     {
-
+        this.connection.removeAllListeners(this.request_target);
     }
 };
 

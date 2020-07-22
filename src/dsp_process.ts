@@ -12,6 +12,7 @@ import eventToPromise from 'event-to-promise';
 import { Node, NodeModule } from './core';
 import { Graph } from './dsp_graph';
 import { VSTScanner } from './vst';
+import { DSPModuleNames } from './dsp_node';
 
 const log = Logger.get("DSPROC");
 
@@ -198,17 +199,14 @@ export class DSPController extends NodeModule {
     start(remote: Connection): void {
 
         this._remote = remote.getRequester('dsp-controller');
+        this._remote_graph = remote.getRequester('graph');
+
         this._try_dsp_start().catch((err) => {
             log.error("DSP startup failed");
         });
 
         this._remote.on('dsp-started', () => {
             log.verbose('DSP startup event');
-
-            this.syncGraph().catch(err => {
-                log.error("Could not sync DSP process " + err);
-            });
-            
             this.events.emit('dsp-started');
             this._running = false;
         });
@@ -220,11 +218,9 @@ export class DSPController extends NodeModule {
         });
 
         this._connection = remote;
-        this._remote_graph = remote.getRequester('graph');
+        this._graph.attachConnection(remote);
 
-        this.events.on('dsp-started', () => {
-            
-        });
+        log.info("Graph service running");
     }
 
     joined(socket: SocketIO.Socket, topic: string)
@@ -247,19 +243,18 @@ export class DSPController extends NodeModule {
 
     constructor(vst: VSTScanner)
     {
-        super("dsp-process");
+        super(DSPModuleNames.DSP_PROCESS);
         this._vst = vst;
         this._graph = new Graph(vst);
+
+        this._graph.setInputNode(128);
+        this._graph.setOutputNode(128);
     }
 
 
     async syncGraph()
     {
         let self = this;
-
-        console.log();
-        console.log(JSON.stringify(this._graph._export_graph()));
-        console.log();
 
         await this._vst.waitPluginsScanned();
 
@@ -299,5 +294,16 @@ export class DSPController extends NodeModule {
     {
         if(this._running)
             return this._try_dsp_start();
+    }
+
+    graph() {
+        return this._graph;
+    }
+
+    async resetGraph() {
+        await this._remote_graph.request('reset')
+        this._graph.clear();
+        this._graph.setInputNode(128);
+        this._graph.setOutputNode(128);
     }
 }

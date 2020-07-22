@@ -1,4 +1,5 @@
 import {EventEmitter} from 'events';
+import {EventEmitter2} from 'eventemitter2';
 import * as fs from 'fs';
 import safe_filename from 'sanitize-filename';
 import {v4 as uniqueId} from 'uuid';
@@ -17,7 +18,7 @@ import {configFileDir} from './files';
 import * as Logger from './log';
 import {ignore} from './util';
 import WebInterface from './web_interface';
-import { option } from 'commander';
+import { lowerFirst } from 'lodash';
 
 const log = Logger.get('NSTATE');
 
@@ -547,7 +548,7 @@ export abstract class NodeModule extends Publisher {
     _data: any;
     _registers: Record<string, ManagedNodeStateRegister> = {};
     _dirty: boolean;
-    events: EventEmitter;
+    events: EventEmitter2;
 
     abstract init(): void;
     abstract start(remote: Connection): void;
@@ -681,6 +682,22 @@ export abstract class NodeModule extends Publisher {
     async applyObjectData(regname: string, obj: ManagedNodeStateObjectData)
     {
         let lreg = this._registers[regname];
+    }
+
+    emitToModule(module: string, event: string, ...data: any[]) {
+        this.events.emit(`${this.myNodeId()}.${module}.${event}`, ...data);
+    }
+
+    emitToNode(event: string, ...data: any[]) {
+        this.events.emit(`${this.myNodeId()}.${event}`, ...data);
+    }
+
+    handleNodeEvent(event: string, handler: (...data: any[]) => void) {
+        this.events.on(`${this.myNodeId()}.${event}`, handler);
+    }
+
+    handleModuleEvent(event: string, handler: (...data: any[]) => void) {
+        this.events.on(`${this.myNodeId()}.${this._name}.${event}`, handler);
     }
 }
 
@@ -985,7 +1002,7 @@ export abstract class Node {
     _remote: Connection;
     _modules: Record<string, NodeModule> = {};
     _state_manager: Requester;
-    events: EventEmitter;
+    events: EventEmitter2;
 
     constructor(id: NodeIdentification)
     {
@@ -1008,7 +1025,7 @@ export abstract class Node {
             this._modules[key].destroy();
     }
 
-    async _init(remote: Connection, node_events: EventEmitter, server: Server)
+    async _init(remote: Connection, node_events: EventEmitter2, server: Server)
     {
         this.events         = node_events;
         this._remote        = remote;
@@ -1021,13 +1038,18 @@ export abstract class Node {
             this._modules[mod]._init(this, server);
         }
 
+        log.info("Reloading data from node " + this.name());
         await this._reload_data_from_node()
+        log.info("Finished loading data from node " + this.name());
 
+        log.info("Start node modules");
         for (let mod of modnames) {
+            log.verbose("Start module " + mod);
             this._modules[mod]._start(remote);
         }
-        this._start();
+        log.info("Node modules started");
 
+        this._start();
     }
 
     _start()
@@ -1136,8 +1158,6 @@ export abstract class Node {
                 }
             }
         });
-
-        this._start();
     }
 
     name()
@@ -1172,6 +1192,14 @@ export abstract class Node {
     {
         return <ModuleType><unknown>this._modules[name];
     }
+
+    emitToModule(module: string, event: string, ...data: any[]) {
+        this.events.emit(`${this.id()}.${module}.${event}`, ...data);
+    }
+
+    emitToNode(event: string, ...data: any[]) {
+        this.events.emit(`${this.id()}.${event}`, ...data);
+    }
 }
 
 export type WEBIFNodeEventHandler = (socket: SocketIO.Socket, node: Node, data: any, transaction?: TransactionID) => void;
@@ -1181,11 +1209,11 @@ export type TransactionID = string;
 export abstract class ServerModule extends Publisher {
     
     _name: string;
-    events: EventEmitter;
+    events: EventEmitter2;
     server: Server;
     webif: WebInterface;
 
-    _init(srv: Server, webif: WebInterface, events: EventEmitter)
+    _init(srv: Server, webif: WebInterface, events: EventEmitter2)
     {
         this.webif = webif;
         this.server = srv;
@@ -1217,7 +1245,7 @@ export abstract class ServerModule extends Publisher {
         return this.server._nodes[id];
     }
 
-    handle(event: string, handler: WEBIFNodeEventHandler)
+    handleWebInterfaceEvent(event: string, handler: WEBIFNodeEventHandler)
     {
         this.webif.attachHandler(this, this._name, event, (socket: SocketIO.Socket, nodeid: string, data: any) => {
             let node = this.server._nodes[nodeid];
@@ -1231,11 +1259,21 @@ export abstract class ServerModule extends Publisher {
         }); 
     }
 
-    handleGlobal(event: string, handler: WEBIFEventHandler)
+    handleGlobalWebInterfaceEvent(event: string, handler: WEBIFEventHandler)
     {
         this.webif.attachHandler(this, this._name, event, (socket: SocketIO.Socket, data: any) => {
             handler(socket, data);
         }); 
+    }
+
+
+
+    emitToModule(node: string, module: string, event: string, ...data: any[]) {
+        this.events.emit(`${node}.${module}.${event}`, ...data);
+    }
+
+    emitToNode(node: string, event: string, ...data: any[]) {
+        this.events.emit(`${node}.${event}`, ...data);
     }
 }
 
@@ -1279,24 +1317,36 @@ export abstract class Server  {
     _nodes: Record<string, Node> = {};
     _modules: Record<string, ServerModule> = {};
     _webif: WebInterface;
-    _event_bus: EventEmitter;
+    _event_bus: EventEmitter2;
     _internals: ServerInternalsModule;
 
     constructor(wssrv: SIServerWSServer, webif: WebInterface)
     {
-        this._event_bus = new EventEmitter();
+        this._event_bus = new EventEmitter2({ wildcard: true, delimiter: '.' });
         this._srv       = wssrv;
         this._webif = webif;
         this._srv.on('add-session', this._on_add_remote.bind(this));
         this._srv.on('remove-session', this._on_remove_remote.bind(this));
         this._internals = new ServerInternalsModule();
         this.add(this._internals);
+
+        this._event_bus.onAny((eventname: string) => {
+            log.debug(`Server event [${eventname}]`);
+        })
     }
 
     add(module: ServerModule)
     {
         this._modules[module._name] = module;
         module._init(this, this._webif, this._event_bus);
+    }
+
+    emitToNodeModule(node: string, module: string, event: string, ...data: any[]) {
+        this._event_bus.emit(`${node}.${module}.${event}`, ...data);
+    }
+
+    emitToNode(node: string, event: string, ...data: any[]) {
+        this._event_bus.emit(`${node}.${event}`, ...data);
     }
 
     _on_add_remote(session: SIServerWSSession)

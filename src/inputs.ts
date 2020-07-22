@@ -6,7 +6,7 @@ import {
     ServerModule
 } from './core';
 import {PortTypes} from './dsp_defs';
-import {DSPNode} from './dsp_node';
+import {DSPNode, DSPModuleNames} from './dsp_node';
 import {NodeAudioInputDescription} from './inputs_defs';
 import {SIDSPNode} from './instance';
 import * as Logger from './log';
@@ -241,7 +241,7 @@ export class NodeAudioInputManager extends NodeModule {
 
     constructor()
     {
-        super('nodeinputs');
+        super(DSPModuleNames.INPUTS);
         this._input_list = new NodeAudioInputList();
         this.add(this._input_list, 'input-list');
     }
@@ -267,7 +267,7 @@ export class AudioInputsManager extends ServerModule {
 
     init(): void
     {
-        this.handle('update', (socket, node: DSPNode, data) => {
+        this.handleWebInterfaceEvent('update', (socket, node: DSPNode, data) => {
             try {
                 socket.emit('inputs.update', node.id(),
                             node.inputs.getRawInputDescriptionList());
@@ -277,7 +277,7 @@ export class AudioInputsManager extends ServerModule {
             }
         });
 
-        this.handle(
+        this.handleWebInterfaceEvent(
             'add', (socket, node: DSPNode, data: NodeAudioInputDescription) => {
                 try {
                     node.inputs.addInput(data);
@@ -290,7 +290,7 @@ export class AudioInputsManager extends ServerModule {
                 }
             });
 
-        this.handle('remove', (socket, node: DSPNode, data: string) => {
+        this.handleWebInterfaceEvent('remove', (socket, node: DSPNode, data: string) => {
             node.inputs.removeInput(data)
                 .then(() => {
                     this.webif.broadcastNodeNotification(node, `Input removed`);
@@ -301,7 +301,7 @@ export class AudioInputsManager extends ServerModule {
                 });
         });
 
-        this.handle('modify', (socket, node: DSPNode,
+        this.handleWebInterfaceEvent('modify', (socket, node: DSPNode,
                                data: NodeAudioInputDescription) => {
             try {
                 let input = node.inputs.findInputForId(data.id);

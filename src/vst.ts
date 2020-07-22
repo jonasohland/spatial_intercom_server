@@ -2,6 +2,7 @@ import * as ipc from './ipc'
 import * as Logger from './log'
 import { Requester, Connection } from './communication';
 import { NodeModule } from './core';
+import { DSPModuleNames } from './dsp_node';
 
 const log = Logger.get("VST");
 
@@ -32,7 +33,7 @@ export class VSTScanner extends NodeModule {
 
     constructor()
     {
-        super('vst-scanner');
+        super(DSPModuleNames.VST_SCANNER);
     }
 
     joined(socket: SocketIO.Socket, topic: string)

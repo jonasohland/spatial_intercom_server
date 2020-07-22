@@ -2,15 +2,12 @@ import * as cp from 'child_process';
 import * as dgram from 'dgram';
 import {EventEmitter} from 'events';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as osc from 'osc-min';
 import * as path from 'path';
 import * as readline from 'readline';
 import * as semver from 'semver';
 import SerialPort from 'serialport';
 import {Terminal} from 'terminal-kit';
-import {isRegExp} from 'util';
-import {threadId} from 'worker_threads';
 
 import {
     Headtracker,
@@ -81,6 +78,8 @@ export abstract class UDPOutputAdapter extends OutputAdapter {
 
     setRemote(addr: string, port: number)
     {
+        log.info(`Headtracking output address set to: ${addr}:${port}`);
+
         this.addr = addr;
         this.port = port;
     }
@@ -932,6 +931,8 @@ export class SerialHeadtracker extends SerialConnection {
     {
         if (this._req_current && this._req_current.vty == ty)
             this._end_request(data);
+        else
+            log.warn("Unexpected response " + si_gy_values[ty]);
     }
 }
 

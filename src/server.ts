@@ -44,6 +44,12 @@ export class SpatialIntercomServer extends Server {
         super(new SIServerWSServer(config), webif);
         webif.attachServer(this);
 
+        this._event_bus.on('headtracker-connected', (id) => {
+            log.info("Set stream destination of new headtracker");
+            let htrk = this.headtracking.getHeadtracker(id);
+            htrk.setStreamDest("192.168.178.99", 4009);
+        });
+
         this.webif = webif;
         this.audio_devices = new AudioDevices();
         this.inputs = new AudioInputsManager();

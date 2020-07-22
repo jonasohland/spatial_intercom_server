@@ -9,8 +9,20 @@ import { NodeUsersManager } from './users';
 import { NodeRooms } from './rooms';
 
 import { v1 as uuid } from 'uuid';
+import { NodeDSPGraphBuilder, GraphBuilderInputEvents } from './dsp_graph_builder';
+import * as Logger from './log';
 
-console.log(uuid());
+const log = Logger.get('DSPNOD');
+
+export const DSPModuleNames = {
+    INPUTS: 'nodeinputs',
+    USERS: 'users',
+    ROOMS: 'rooms',
+    DSP_PROCESS: 'dsp-process',
+    VST_SCANNER: 'vst-scanner',
+    AUDIO_DEVICES: 'node-audio-devices',
+    GRAPH_BUILDER: 'graph-builder',
+}
 
 export class DSPNode extends Node {
 
@@ -19,7 +31,7 @@ export class DSPNode extends Node {
     }
 
     start() {
-        
+        this.emitToModule(DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.FULL_REBUILD);
     }
 
     destroy()
@@ -32,6 +44,7 @@ export class DSPNode extends Node {
     rooms: NodeRooms;
     vst: VSTScanner;
     dsp_graph: Graph;
+    dsp_graph_builder: NodeDSPGraphBuilder;
     dsp_process: DSPController;
     audio_devices: NodeAudioDevices;
 
@@ -39,16 +52,18 @@ export class DSPNode extends Node {
     {
         super(id);
         this.inputs = new NodeAudioInputManager();
-        this.users = new NodeUsersManager();
+        this.users = new NodeUsersManager(this.inputs);
         this.rooms = new NodeRooms();
         this.vst = new VSTScanner();
         this.dsp_process = new DSPController(this.vst);
         this.audio_devices = new NodeAudioDevices();
+        this.dsp_graph_builder = new NodeDSPGraphBuilder();
         this.add(this.inputs);
         this.add(this.users);
         this.add(this.rooms);
         this.add(this.dsp_process);
         this.add(this.vst);
         this.add(this.audio_devices);
+        this.add(this.dsp_graph_builder);
     }
 }

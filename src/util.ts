@@ -4,6 +4,9 @@ import {subnet} from 'ip';
 import {isIP} from 'net';
 import * as os from 'os';
 import {EventEmitter} from 'serialport';
+import { PortTypes } from './dsp_defs';
+import { indexOf } from 'lodash';
+import { Port } from './dsp_graph';
 
 export function applyMixins(derivedCtor: any, baseCtors: any[])
 {
@@ -105,4 +108,13 @@ export function promisifyEventWithTimeout<EventReturnValueType>(
 
         eventemitter.on(event, handler);
     });
+}
+
+export function ensurePortTypeEnum(val: string | PortTypes) : PortTypes {
+
+    if(typeof val == 'string') {
+        let v = <PortTypes> <unknown> val;
+        return <PortTypes> <unknown> PortTypes[v];
+    } else
+        return <PortTypes> <unknown> val;
 }

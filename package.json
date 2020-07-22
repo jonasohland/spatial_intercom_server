@@ -41,6 +41,7 @@
     "dependency-graph": "^0.9.0",
     "dnssd": "^0.4.1",
     "event-to-promise": "^0.8.0",
+    "eventemitter2": "^6.4.3",
     "express": "^4.17.1",
     "express-history-api-fallback": "^2.2.1",
     "fclone": "^1.0.11",
@@ -79,19 +80,19 @@
   "eslintConfig": {
     "root": true,
     "env": {
-        "node": true
+      "node": true
     },
     "extends": [
-        "eslint:recommended"
+      "eslint:recommended"
     ],
     "rules": {
-        "no-console": "off",
-        "indent": [
-            "error",
-            4
-        ]
+      "no-console": "off",
+      "indent": [
+        "error",
+        4
+      ]
     }
-},
+  },
   "files": [
     "dist/**/*",
     "bin/**/*",
