@@ -439,6 +439,7 @@ export class Requester extends EventEmitter {
 
     destroy()
     {
+        log.debug("Remove all listeners to " + this.request_target);
         this.connection.removeAllListeners(this.request_target);
     }
 };

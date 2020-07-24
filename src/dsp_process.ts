@@ -301,7 +301,7 @@ export class DSPController extends NodeModule {
     }
 
     async resetGraph() {
-        await this._remote_graph.request('reset')
+        // await this._remote_graph.request('reset')
         this._graph.clear();
         this._graph.setInputNode(128);
         this._graph.setOutputNode(128);

@@ -1266,8 +1266,6 @@ export abstract class ServerModule extends Publisher {
         }); 
     }
 
-
-
     emitToModule(node: string, module: string, event: string, ...data: any[]) {
         this.events.emit(`${node}.${module}.${event}`, ...data);
     }
@@ -1347,6 +1345,16 @@ export abstract class Server  {
 
     emitToNode(node: string, event: string, ...data: any[]) {
         this._event_bus.emit(`${node}.${event}`, ...data);
+    }
+
+    nodes()
+    {
+        let nodeids = Object.keys(this._nodes);
+        let out = [];
+        for(let id of nodeids)
+            out.push(this._nodes[id]);
+
+        return out;
     }
 
     _on_add_remote(session: SIServerWSSession)

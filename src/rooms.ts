@@ -4,6 +4,7 @@ import { defaultRoom, RoomData } from './rooms_defs';
 import * as Logger from './log';
 import { DSPNode, DSPModuleNames } from "./dsp_node";
 import { KeyWithValue } from "./web_interface_defs";
+import { GraphBuilderInputEvents } from "./dsp_graph_builder";
 
 const log = Logger.get('NROOMS');
 
@@ -92,6 +93,11 @@ export class NodeRooms extends NodeModule {
         }
     }
 
+    getRoom(room: string)
+    {
+        return <RoomData> this._rooms._objects[room].get();
+    }
+
     constructor()
     {
         super(DSPModuleNames.ROOMS);
@@ -110,24 +116,27 @@ export class Rooms extends ServerModule {
 
         this.handleWebInterfaceEvent('modify', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
             node.rooms.updateRoom(data);
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ROOM_ENABLED, data.letter, data);
         });
 
-        this.handleWebInterfaceEvent('set-main', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
-            console.log(`SET [main] [${data.key}] ${data.value}`);
+        this.handleWebInterfaceEvent('set-main', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ROOM_REFLECTIONS, data.letter, data);
         });
 
-        this.handleWebInterfaceEvent('set-attn', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
-            console.log(`SET [attn] [${data.key}] ${data.value}`);
+        this.handleWebInterfaceEvent('set-attn', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ROOM_ATTN, data.letter, data);
         });
 
-        this.handleWebInterfaceEvent('set-room', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
-            console.log(`SET [room] [${data.key}] ${data.value}`);
+        this.handleWebInterfaceEvent('set-room', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ROOM_SHAPE, data.letter, data);
         });
 
-        this.handleWebInterfaceEvent('set-eq', (socket: SocketIO.Socket, node: DSPNode, data: KeyWithValue) => {
-            console.log(`SET [eq] [${data.key}] ${data.value}`);
+        this.handleWebInterfaceEvent('set-eq', (socket: SocketIO.Socket, node: DSPNode, data: RoomData) => {
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ROOM_HIGHSHELF, data.letter, data);
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ROOM_LOWSHELF, data.letter, data);
         });
     }
+
 
     joined(socket: SocketIO.Socket, topic: string) {
     }

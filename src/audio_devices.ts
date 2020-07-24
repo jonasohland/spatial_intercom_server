@@ -538,7 +538,6 @@ export class AudioDevices extends ServerModule {
                 node.audio_devices.enable()
                     .then(() => {
                         socket.emit('audiosettings.done');
-                        this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.FULL_REBUILD);
                     })
                     .catch(this.endTransactionWithError.bind(this, socket));
             }

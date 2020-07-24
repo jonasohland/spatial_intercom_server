@@ -1,9 +1,3 @@
-import {Socket} from 'dgram';
-import EventEmitter from 'events';
-import * as IP from 'ip';
-import {fromPairs} from 'lodash';
-
-import * as Audio from './audio_devices';
 import {Connection} from './communication';
 import {
     ManagedNodeStateListRegister,
@@ -11,17 +5,10 @@ import {
     NodeModule,
     ServerModule
 } from './core';
-import {
-    AdvancedSpatializerModule,
-    BasicSpatializer,
-    BasicSpatializerModule,
-    BasicUserModule,
-    SpatializationModule
-} from './dsp_modules';
-import {DSPNode, DSPModuleNames} from './dsp_node';
-import {Headtracking} from './headtracking';
+import {PortTypes, SourceParameterSet} from './dsp_defs';
+import {GraphBuilderInputEvents} from './dsp_graph_builder';
+import {DSPModuleNames, DSPNode} from './dsp_node';
 import * as Inputs from './inputs';
-import * as Instance from './instance';
 import * as Logger from './log';
 import {
     basicSpatializedInput,
@@ -29,455 +16,12 @@ import {
     UserAddInputsMessage,
     UserData,
     UserDeleteInputMessage,
-    UserModifyInputMessage
+    UserModifyInputMessage,
+    UserPanInputMessage
 } from './users_defs';
-import WebInterface from './web_interface';
-import { PortTypes } from './dsp_defs';
-import { ensurePortTypeEnum } from './util';
-import { managers } from 'socket.io-client';
+import {ensurePortTypeEnum} from './util';
 
 const log = Logger.get('USERSM');
-
-export interface OwnedInput {
-
-    id: number;
-    input: Inputs.Input;
-    format: string;
-    azm: number;
-    elv: number;
-    stwidth: number;
-    mute: boolean;
-
-    dspModule?: SpatializationModule;
-}
-
-interface WEBIFNewUserData {
-    username: string;
-    nodeid: string
-    channels: Audio.Channel[];
-}
-
-
-interface WEBIFUserData {
-    id: number;
-    name: string;
-    nodename: string;
-    nid: string;
-    advanced: boolean;
-    htrk: -1;
-    selected_inputs: [];
-    inputs: OwnedInput[];
-}
-
-
-interface WEBIFNodesAndUsers {
-    nodename: string;
-    id: string;
-    users: WEBIFUserData[];
-}
-
-export interface NodeAndUsers {
-    si: Instance.SIDSPNode;
-    users: OLDUser[];
-}
-
-
-export class OLDUser {
-
-    id: number;
-    name: string;
-    advanced: boolean;
-    htrk: number = -1;
-    inputs: OwnedInput[];
-    outputChannels: Audio.Channel[];
-    roomsize: number;
-    reflections: number;
-    room_character: number;
-    dspModule?: BasicUserModule;
-
-    constructor(instance: Instance.SIDSPNode, name: string)
-    {
-        this.name = name;
-    }
-
-    setInputMuted(iid: number, muted: boolean)
-    {
-        let input = this.findInput(iid);
-
-        if (input)
-            input.mute = muted;
-        else
-            return;
-
-        log.info(`Mute status on input ${input.input.name} for user ${
-            this.name} set to ${muted}`);
-    }
-
-    setInputAzm(iid: number, val: number)
-    {
-        let input = this.findInput(iid);
-
-        if (input)
-            input.azm = val;
-        else
-            return;
-
-        input.dspModule.setAzm(val);
-
-        log.info(`Azimuth on input ${input.input.name} for user ${
-            this.name} set to ${val}`);
-    }
-
-    setInputElv(iid: number, val: number)
-    {
-        let input = this.findInput(iid);
-
-        if (input)
-            input.elv = val;
-        else
-            return;
-
-        input.dspModule.setElv(val);
-
-        log.info(`Elevation on input ${input.input.name} for user ${
-            this.name} set to ${val}`);
-    }
-
-    setInputStWidth(iid: number, val: number)
-    {
-        let input = this.findInput(iid);
-
-        if (input)
-            input.stwidth = val;
-        else
-            return;
-
-        input.dspModule.setStWidth(val);
-
-        log.info(`Stereo width on input ${input.input.name} for user ${
-            this.name} set to ${val}`);
-    }
-
-    findInput(iid: number)
-    {
-        let input = this.inputs.find(input => input.input.id == iid);
-
-        if (input)
-            return input
-            else return null
-                && log.error('Could not find input ' + iid + ' on user '
-                             + this.name);
-    }
-}
-
-export class OLDUsersManager extends EventEmitter {
-
-    users: NodeAndUsers[] = [];
-    webif: WebInterface;
-    inputs: Inputs.InputManager;
-    htrks: Headtracking;
-    max_id = 0;
-
-    constructor(webif: WebInterface, inputs: Inputs.InputManager,
-                htrks: Headtracking)
-    {
-        super();
-
-        let self    = this;
-        this.webif  = webif;
-        this.inputs = inputs;
-        this.htrks  = htrks;
-
-        this.webif.io.on('connection', socket => {
-            socket.on('users.update', () => {
-                self.updateInterface(socket);
-            });
-
-            socket.on('user.add', data => {
-                self.addUser(data);
-            })
-
-            socket.on(
-                'user.switch.mode', self.switchSpatializationMode.bind(self));
-
-            socket.on('users.inputs.changed', data => {
-                self.userInputsChanged(data);
-            });
-
-            socket.on('users.reflections', self.setReflections.bind(self));
-            socket.on('users.room_character', self.setRoomCharacter.bind(self));
-
-            socket.on('users.input.mute', self.setInputMuted.bind(self));
-            socket.on('users.input.azm', self.setInputAzm.bind(self));
-            socket.on('users.input.elv', self.setInputElv.bind(self));
-            socket.on('users.input.stwidth', self.setInputStWidth.bind(self));
-            socket.on('users.htrk.assign', self.assignHeadtracker.bind(self));
-        });
-    }
-
-    addUser(userdata: WEBIFNewUserData)
-    {
-        /* let ins  = this.inputs.devices.instances.find(ins => ins.id
-                                                            == userdata.nodeid);
-         */
-        /* let user = new User(ins, userdata.username);
-
-        user.advanced       = false;
-        user.inputs         = [];
-        user.id             = ++this.max_id;
-        user.outputChannels = userdata.channels;
-
-        let nodeAndUsers = this.users.find(n => n.si.id == userdata.nodeid);
-
-        if (nodeAndUsers == undefined)
-            this.users.push({ si : ins, users : [] });
-
-        nodeAndUsers = this.users.find(n => n.si.id == userdata.nodeid);
-
-        nodeAndUsers.users.push(user);
-
-        let dspModule = new BasicUserModule(user);
-
-        // ins.graph.addModule(dspModule);
-        // ins.graph.sync();
-
-        this.updateInterface(this.webif.io);
-        */
-    }
-
-    async updateInterface(socket: SocketIO.Server|SocketIO.Socket)
-    {
-        let update_users: WEBIFNodesAndUsers[] = [];
-        let update_aux: any[]                  = [];
-
-        this.users.forEach(node => update_users.push({
-            id : node.si.id,
-            nodename : node.si.name,
-            users : node.users.map(user => {
-                return {
-                    id : user.id,
-                    advanced : user.advanced,
-                    nodename : node.si.name,
-                    reflections : user.reflections,
-                    roomsize : user.roomsize,
-                    room_character : user.room_character,
-                    name : user.name,
-                    nid : node.si.id,
-                    selected_inputs : [],
-                    htrk : -1,
-                    inputs : user.inputs.map(input => {
-                        let obj = <any>{};
-                        Object.assign(obj, input);
-
-                        // this needs to be deleted because it contains circular
-                        // dependencies
-                        delete obj.dspModule;
-
-                        return obj;
-                    })
-                };
-            })
-        }));
-
-        this.inputs.nodes.forEach(nodeAndInput => {
-            update_aux.push({
-                nodename : nodeAndInput.si.name,
-                id : nodeAndInput.si.id,
-                inputs : nodeAndInput.inputs
-            });
-        });
-
-        // let channels = await this.inputs.devices.getAllChannelLists();
-
-        socket.emit(
-            'users.update',
-            { nodes : update_users, inputs : update_aux, channels : null });
-
-        socket.emit('users.headtrackers.update',
-                    this.htrks.trackers.filter(trk => trk.remote.conf)
-                        .map(trk => trk.remote.id));
-    }
-
-    userInputsChanged(data: { id: number, nid: string, inputs: OwnedInput[] })
-    {
-
-        let usr = this.findUser(data.nid, data.id);
-
-        if (!usr)
-            return;
-
-        usr.inputs = usr.inputs.filter(el => {
-            let idx = data.inputs.findIndex(inp => inp.id == el.id);
-
-            if (idx == -1) {
-
-                log.info(
-                    `Input ${el.input.name} removed from user ${usr.name}`);
-
-                let node = this.inputs.nodes.find(n => n.si.id == data.nid);
-
-                if (el.dspModule) {
-                    node.si.graph.removeModule(el.dspModule);
-                    // node.si.graph.sync();
-                }
-
-                return false;
-            }
-
-            return true;
-        });
-
-        data.inputs.forEach(dinp => {
-            if (usr.inputs.findIndex(inp => inp.id == dinp.id) == -1) {
-
-                dinp.input = this.inputs.nodes.find(n => n.si.id == data.nid)
-                                 .inputs.find(inp => inp.id == dinp.id);
-
-                usr.inputs.push(dinp);
-
-                let node = this.inputs.nodes.find(n => n.si.id == data.nid);
-
-                let input_mod;
-
-                if (usr.advanced)
-                    input_mod = new AdvancedSpatializerModule(dinp, usr);
-                else
-                    input_mod = new BasicSpatializerModule(dinp, usr);
-
-                node.si.graph.addModule(input_mod);
-                // node.si.graph.sync();
-
-                log.info(
-                    `Added input ${dinp.input.name} added to user ${usr.name}`);
-            }
-        });
-
-        this.updateInterface(this.webif.io);
-    }
-
-    switchSpatializationMode(usr_id: number, nid: string)
-    {
-
-        let node = this.users.find(us => us.si.id == nid);
-        let usr  = node.users.find(us => us.id == usr_id);
-
-        let graph = node.si.graph;
-
-        usr.inputs.forEach(input => {
-            graph.removeModule(input.dspModule);
-        });
-
-        usr.advanced = !usr.advanced;
-
-        usr.inputs.forEach(input => {
-            let new_module;
-
-            if (usr.advanced)
-                new_module = new AdvancedSpatializerModule(input, usr);
-            else
-                new_module = new BasicSpatializerModule(input, usr);
-
-            graph.addModule(new_module);
-        })
-
-        // graph.sync();
-    }
-
-    setInputMuted(usr_id: number, nid: string, iid: number, mute: boolean)
-    {
-        let usr = this.findUser(nid, usr_id);
-
-        if (usr)
-            usr.setInputMuted(iid, mute);
-    }
-
-    setInputAzm(usr_id: number, nid: string, iid: number, azm: number)
-    {
-        let usr = this.findUser(nid, usr_id);
-
-        if (usr)
-            usr.setInputAzm(iid, azm);
-    }
-
-    setInputElv(usr_id: number, nid: string, iid: number, elv: number)
-    {
-        let usr = this.findUser(nid, usr_id);
-
-        if (usr)
-            usr.setInputElv(iid, elv);
-    }
-
-    setInputStWidth(usr_id: number, nid: string, iid: number, width: number)
-    {
-        let usr = this.findUser(nid, usr_id);
-
-        if (usr)
-            usr.setInputStWidth(iid, width);
-    }
-
-    findUser(nid: string, userId: number)
-    {
-        let node = this.users.find(node => node.si.id == nid);
-
-        if (!node)
-            return null && log.error('Could not find node for id ' + nid);
-
-        let usr = node.users.find(user => user.id == userId);
-
-        if (!usr)
-            return null && log.error('Could not find user with id ' + userId);
-
-        return usr;
-    }
-
-    assignHeadtracker(userId: number, nid: string, htrkId: number)
-    {
-        let node = this.users.find(n => n.si.id == nid);
-        let usr  = node.users.find(us => us.id == userId);
-
-        usr.htrk = htrkId;
-
-        if (usr.dspModule)
-            usr.dspModule.assignHeadtracker(htrkId);
-
-        let trk = this.htrks.trackers.find(htrk => htrk.remote.conf.deviceID()
-                                                   == htrkId);
-
-        if (trk) {
-            return (trk.setStreamDest(node.si.addresses[0], 45667));
-        }
-        else {
-            log.error('Headtracker not found');
-        }
-    }
-
-    setReflections(usr_id: number, nid: string, value: number)
-    {
-        let node = this.users.find(n => n.si.id == nid);
-        let usr  = node.users.find(us => us.id == usr_id);
-
-        if (!usr.advanced)
-            return;
-
-        usr.inputs.forEach(input => {
-            (<AdvancedSpatializerModule>input.dspModule).setReflections(value);
-        });
-    }
-
-    setRoomCharacter(usr_id: number, nid: string, value: number)
-    {
-        let node = this.users.find(n => n.si.id == nid);
-        let usr  = node.users.find(us => us.id == usr_id);
-
-        if (!usr.advanced)
-            return;
-
-        usr.inputs.forEach(input => {
-            (<AdvancedSpatializerModule>input.dspModule)
-                .setRoomCharacter(value);
-        });
-    }
-}
 
 export class User extends ManagedNodeStateObject<UserData> {
 
@@ -487,7 +31,7 @@ export class User extends ManagedNodeStateObject<UserData> {
     constructor(data: UserData, manager: NodeUsersManager)
     {
         super();
-        this.data = data
+        this.data = data;
         this._man = manager;
     }
 
@@ -501,20 +45,23 @@ export class User extends ManagedNodeStateObject<UserData> {
         return this.data;
     }
 
-    inputs() {
+    inputs()
+    {
         return this._man.getUsersInputs(this.data.id);
     }
 }
 
-export class SpatializedInput extends ManagedNodeStateObject<SpatializedInputData> {
+export class SpatializedInput extends
+    ManagedNodeStateObject<SpatializedInputData> {
 
     data: SpatializedInputData;
     inputsModule: Inputs.NodeAudioInputManager;
 
-    constructor(data: SpatializedInputData, inputsModule: Inputs.NodeAudioInputManager)
+    constructor(data: SpatializedInputData,
+                inputsModule: Inputs.NodeAudioInputManager)
     {
         super();
-        this.data = data;
+        this.data         = data;
         this.inputsModule = inputsModule;
     }
 
@@ -528,26 +75,40 @@ export class SpatializedInput extends ManagedNodeStateObject<SpatializedInputDat
         return this.data;
     }
 
-    findSourceType() {
+    findSourceType()
+    {
         let source = this.inputsModule.findInputForId(this.data.inputid);
 
-        if(source)
+        if (source)
             return ensurePortTypeEnum(source.get().type);
         else {
-            log.error("Could not find input source for input " + this.data.id + " input: " + this.data.inputid);
+            log.error('Could not find input source for input ' + this.data.id
+                      + ' input: ' + this.data.inputid);
             return PortTypes.Mono;
         }
     }
 
-    findSourceChannel() {
+    findSourceChannel()
+    {
         let source = this.inputsModule.findInputForId(this.data.inputid);
 
-        if(source)
+        if (source)
             return source.get().channel;
         else {
-            log.error("Could not find input source for input " + this.data.id + " input: " + this.data.inputid);
+            log.error('Could not find input source for input ' + this.data.id
+                      + ' input: ' + this.data.inputid);
             return 0;
         }
+    }
+
+    params(): SourceParameterSet
+    {
+        return { a: this.data.azm, e: this.data.elv, height: this.data.height, width: this.data.width };
+    }
+
+    isInRoom()
+    {
+        return this.data.room && this.data.room.length;
     }
 }
 
@@ -555,7 +116,8 @@ class UserList extends ManagedNodeStateListRegister {
 
     _man: NodeUsersManager;
 
-    constructor(manager: NodeUsersManager) {
+    constructor(manager: NodeUsersManager)
+    {
         super();
     }
 
@@ -599,8 +161,8 @@ export class NodeUsersManager extends NodeModule {
     {
         super(DSPModuleNames.USERS);
         this._inputs_module = inputsModule;
-        this._users  = new UserList(this);
-        this._inputs = new SpatializedInputsList(inputsModule);
+        this._users         = new UserList(this);
+        this._inputs        = new SpatializedInputsList(inputsModule);
         this.add(this._users, 'users');
         this.add(this._inputs, 'inputs');
     }
@@ -656,12 +218,11 @@ export class NodeUsersManager extends NodeModule {
         if (this.findUserInput(userid, input.get().id))
             throw 'Input already assigned';
 
-        let newinput = 
-            basicSpatializedInput(input.get().id, userid);
+        let newinput = basicSpatializedInput(input.get().id, userid, ensurePortTypeEnum(input.get().type));
 
         let userdata = user.get();
 
-        if(userdata.room != null)
+        if (userdata.room != null)
             newinput.room = userdata.room;
 
         userdata.inputs.push(newinput.id);
@@ -707,7 +268,8 @@ export class NodeUsersManager extends NodeModule {
     joined(socket: SocketIO.Socket, topic: string)
     {
         if (topic == 'users')
-            socket.emit('node.users.update', this.myNodeId(), this.listRawUsersData());
+            socket.emit(
+                'node.users.update', this.myNodeId(), this.listRawUsersData());
         else if (topic.startsWith('userinputs-')) {
             let userid = topic.slice(11);
             try {
@@ -731,8 +293,8 @@ export class NodeUsersManager extends NodeModule {
 
     updateWebInterfaces()
     {
-        this.publish(
-            'users', 'node.users.update', this.myNodeId(), this.listRawUsersData());
+        this.publish('users', 'node.users.update', this.myNodeId(),
+                     this.listRawUsersData());
     }
 
     publishUserInputs(userid: string)
@@ -748,12 +310,12 @@ export class NodeUsersManager extends NodeModule {
 
     listRawUsersData()
     {
-        return <UserData[]> this._users._object_iter().map(obj => obj.get());
+        return <UserData[]>this._users._object_iter().map(obj => obj.get());
     }
 
     listUsers()
     {
-        return <User[]> this._users._objects
+        return <User[]>this._users._objects
     }
 
     findInputById(id: string)
@@ -824,33 +386,35 @@ export class UsersManager extends ServerModule {
 
     init()
     {
-        this.handleWebInterfaceEvent('add.user', (socket: SocketIO.Socket, node: DSPNode,
-                                 data: UserData) => {
-            if (data.channel != null) {
-                node.users.addUser(data);
-            }
-            else
-                this.webif.broadcastWarning(
-                    node.name(), 'Could not add user: Missing data');
-        });
-
-        this.handleWebInterfaceEvent('user.add.inputs', (socket: SocketIO.Socket, node: DSPNode,
-                                        data: UserAddInputsMessage) => {
-            data.inputs.forEach(input => {
-                let nodein = node.inputs.findInputForId(input.id);
-                if (nodein) {
-                    let user = node.users.findUserForId(data.userid);
-                    if (user)
-                        node.users.addInputToUser(user.get().id, nodein);
-                    else
-                        this.webif.error(`User ${data.userid} not found`);
+        this.handleWebInterfaceEvent(
+            'add.user',
+            (socket: SocketIO.Socket, node: DSPNode, data: UserData) => {
+                if (data.channel != null) {
+                    node.users.addUser(data);
                 }
                 else
-                    this.webif.error(`Input ${input.name} not found`);
+                    this.webif.broadcastWarning(
+                        node.name(), 'Could not add user: Missing data');
             });
-            node.users.publishUserInputs(data.userid);
-            node.users.updateWebInterfaces();
-        });
+
+        this.handleWebInterfaceEvent(
+            'user.add.inputs', (socket: SocketIO.Socket, node: DSPNode,
+                                data: UserAddInputsMessage) => {
+                data.inputs.forEach(input => {
+                    let nodein = node.inputs.findInputForId(input.id);
+                    if (nodein) {
+                        let user = node.users.findUserForId(data.userid);
+                        if (user)
+                            node.users.addInputToUser(user.get().id, nodein);
+                        else
+                            this.webif.error(`User ${data.userid} not found`);
+                    }
+                    else
+                        this.webif.error(`Input ${input.name} not found`);
+                });
+                node.users.publishUserInputs(data.userid);
+                node.users.updateWebInterfaces();
+            });
 
         this.handleWebInterfaceEvent(
             'user.delete.input', (socket: SocketIO.Socket, node: DSPNode,
@@ -858,15 +422,34 @@ export class UsersManager extends ServerModule {
                 node.users.removeInputFromUser(data.userid, data.input);
             });
 
-        this.handleWebInterfaceEvent('user.modify.input', (socket: SocketIO.Socket,
-                                          node: DSPNode,
-                                          data: UserModifyInputMessage) => {
-            node.users.modifyUserInput(data.userid, data.input, data.recompile);
-        });
+        this.handleWebInterfaceEvent(
+            'user.modify.input', (socket: SocketIO.Socket, node: DSPNode,
+                                  data: UserModifyInputMessage) => {
+                node.users.modifyUserInput(
+                    data.userid, data.input, data.recompile);
+            });
 
-        this.handleWebInterfaceEvent('user.modify', (socket: SocketIO.Socket, node: DSPNode,
-                                    data: UserData) => {
-            node.users.modifyUser(data);
-        });
+        this.handleWebInterfaceEvent(
+            'user.input.azm', (socket: SocketIO.Socket, node: DSPNode,
+                               data: UserPanInputMessage) => {
+                log.debug("Move " + data.value);
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.AZM, data.userid,
+                                  data.spid, data.value);
+            });
+
+        this.handleWebInterfaceEvent(
+            'user.input.elv', (socket: SocketIO.Socket, node: DSPNode,
+                               data: UserPanInputMessage) => {
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.ELV, data.userid,
+                                  data.spid, data.value);
+            });
+
+        this.handleWebInterfaceEvent(
+            'user.modify',
+            (socket: SocketIO.Socket, node: DSPNode, data: UserData) => {
+                node.users.modifyUser(data);
+            });
     }
 }

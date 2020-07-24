@@ -1,3 +1,5 @@
+import { Port } from "./dsp_graph";
+
 export enum PortTypes {
     Any,
     Mono,
@@ -5,11 +7,7 @@ export enum PortTypes {
     Quad,
     Surround_5_1,
     Surround_7_1,
-    Surround_10_2,
-    Surround_11_1,
-    Surround_22_2,
     x3D_5_4_1,
-    x3D_7_4_1,
     x3D_4_0_4,
     Ambi_O0,
     Ambi_O1,
@@ -38,29 +36,116 @@ export function stringToPortType(str: string)
     }
 }
 
-export const PortTypeChannelCount = [
-    1,      // Any
-    1,      // Mono
-    2,      // Stereo
-    4,      // Quad
-    6,      // 5.1
-    8,      // 7.1
-    12,     // 10.2
-    12,     // 11.1
-    24,     // 22.2
-    10,     // 5.4.1
-    12,     // 7.4.1
-    8,      // 4.0.4
-    1,      // Ambi O0
-    4,      // Ambi O1
-    9,      // Ambi O2
-    16,     // Ambi O3
-    25,     // Ambi O4
-    36,     // Ambi O5
-    49,     // Ambi O6
-    64,     // Ambi O7
-    81,     // Ambi O8
-    100,    // Ambi O9
-    121,    // Ambi O10
-    144     // Ambi O11
+export interface Source {
+    a: number,
+    e: number,
+}
+
+export interface SourceParameterSet {
+    a: number,
+    e: number,
+    height?: number,
+    width?: number
+};
+
+export type PanFunction = (params: SourceParameterSet) => Source[];
+export type SourceParameterSetDefaultsGenerator = () => SourceParameterSet;
+
+function _basic_defaults() : SourceParameterSet {
+    return { a: 0, e: 0 };
+}
+
+function _basic_defaults_generator(width: number, height?: number): SourceParameterSetDefaultsGenerator {
+    return function() {
+        return {
+            a: 0,
+            e: 0,
+            width,
+            height
+        }
+    }
+}
+
+function _panfunction_any(params: SourceParameterSet) : Source[] {
+    return [ { a: params.a, e: params.e } ];
+}
+
+function _panfunction_mono(params: SourceParameterSet) : Source[] {
+    return [ { a: params.a, e: params.e } ];
+}
+
+function _panfunction_stereo(params: SourceParameterSet): Source[] {
+    
+    params.width = params.width || 0;
+
+    let aL = params.a - (params.width / 2);
+    let aR = params.a + (params.width / 2);
+
+    return [{a: aL, e: params.e}, {a: aR, e: params.e}];
+}
+
+
+function _panfunction_quad(params: SourceParameterSet): Source[] {
+    return [
+        {a: params.a - 45, e: params.e},
+        {a: params.a + 45, e: params.e},
+        {a: params.a - 135, e: params.e},
+        {a: params.a + 135, e: params.e},
+    ]
+}
+
+function _panfunction_surround_5_1(params: SourceParameterSet): Source[] {
+    return [ 
+        {a: params.a - (params.width / 2), e: params.e},
+        {a: params.a + (params.width / 2), e: params.e},
+        {a: params.a, e: params.e},
+        {a: params.a, e: params.e},
+        {a: params.a - 110, e: params.e},
+        {a: params.a + 110, e: params.e},
+    ];
+}
+
+
+export const SourcePanFunctions = [
+    _panfunction_any,
+    _panfunction_mono,
+    _panfunction_stereo,
+    _panfunction_quad,
 ];
+
+export const SourceParameterSetDefaults: SourceParameterSetDefaultsGenerator[] = [
+    _basic_defaults,
+]
+
+export interface SourceUtil {
+    pan: PanFunction,
+    channels: number,
+    defaults: SourceParameterSetDefaultsGenerator
+}
+
+// clang-format off
+
+export const SourceUtils: Record<PortTypes, SourceUtil> = {
+    [PortTypes.Any]:            { channels: 1, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Mono]:           { channels: 1, pan: _panfunction_mono, defaults: _basic_defaults },
+    [PortTypes.Stereo]:         { channels: 2, pan: _panfunction_stereo, defaults: _basic_defaults_generator(90) },
+    [PortTypes.Quad]:           { channels: 4, pan: _panfunction_quad, defaults: _basic_defaults },
+    [PortTypes.Surround_5_1]:   { channels: 6, pan: _panfunction_surround_5_1, defaults: _basic_defaults_generator(60) },
+    [PortTypes.Surround_7_1]:   { channels: 8, pan: _panfunction_any, defaults: _basic_defaults_generator(30) },
+    [PortTypes.x3D_4_0_4]:      { channels: 8, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.x3D_5_4_1]:      { channels: 10, pan: _panfunction_any, defaults: _basic_defaults_generator(30) },
+    [PortTypes.Ambi_O0]:        { channels: 1, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O1]:        { channels: 4, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O2]:        { channels: 9, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O3]:        { channels: 16, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O4]:        { channels: 25, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O5]:        { channels: 36, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O6]:        { channels: 49, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O7]:        { channels: 64, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O8]:        { channels: 81, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O9]:        { channels: 100, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O10]:       { channels: 121, pan: _panfunction_any, defaults: _basic_defaults },
+    [PortTypes.Ambi_O11]:       { channels: 144, pan: _panfunction_any, defaults: _basic_defaults },
+};
+
+// clang-format on

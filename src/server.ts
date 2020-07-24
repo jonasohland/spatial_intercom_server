@@ -14,6 +14,7 @@ import { StateUpdateStrategy, Server, Node } from './core';
 import { DSPNode } from './dsp_node';
 import { UsersManager } from './users';
 import { Rooms } from './rooms';
+import { DSPGraphController } from './dsp_graph_builder';
 
 const log = Logger.get('SERVER');
 
@@ -37,6 +38,7 @@ export class SpatialIntercomServer extends Server {
     users: UsersManager;
     rooms: Rooms;
     headtracking: Headtracking;
+    graphcontroller: DSPGraphController;
 
     constructor(config: any)
     {
@@ -56,11 +58,13 @@ export class SpatialIntercomServer extends Server {
         this.users = new UsersManager();
         this.rooms = new Rooms();
         this.headtracking = new Headtracking(this.webif);
+        this.graphcontroller = new DSPGraphController();
         this.add(this.webif);
         this.add(this.audio_devices);
         this.add(this.inputs);
         this.add(this.users);
         this.add(this.rooms);
         this.add(this.headtracking);
+        this.add(this.graphcontroller);
     }
 }
