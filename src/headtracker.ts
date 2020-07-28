@@ -30,7 +30,9 @@ export enum HeadtrackerStateFlags {
     RESET_ORIENTATION = 4,
     INVERT_X          = 8,
     INVERT_Y          = 16,
-    INVERT_Z          = 32
+    INVERT_Z          = 32,
+    CALIBRATE_1       = 64,
+    CALIBRATE_2       = 128
 }
 
 export interface HeadtrackerNetworkSettings {
@@ -304,9 +306,9 @@ export class HeadtrackerDataPacket {
     {
         this.device_id = id;
         this.w         = vals[0];
-        this.x         = vals[0];
-        this.y         = vals[0];
-        this.z         = vals[0];
+        this.x         = vals[1];
+        this.y         = vals[2];
+        this.z         = vals[3];
     }
 
     static check(m: Buffer) {}
@@ -338,10 +340,10 @@ export class HeadtrackerDataPacket {
     static newPacketFromFloatLEData(b: Buffer, dataoffs: number, id: number, seq: number)
     {
         return new HeadtrackerDataPacket(id, [
-            b.readFloatLE(dataoffs) * 16384,
-            b.readFloatLE(dataoffs + 4) * 16384,
-            b.readFloatLE(dataoffs + 8) * 16384,
-            b.readFloatLE(dataoffs + 12) * 16384
+            16384.0 + b.readFloatLE(dataoffs) * 16384,
+            16384.0 + b.readFloatLE(dataoffs + 4) * 16384,
+            16384.0 + b.readFloatLE(dataoffs + 8) * 16384,
+            16384.0 + b.readFloatLE(dataoffs + 12) * 16384
         ]).toBuffer(seq);
     }
 

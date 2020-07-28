@@ -40,6 +40,8 @@ export class NetworkHeadtracker extends Headtracker {
     update_required: boolean;
     dumping: boolean;
     resetting_orientation: boolean;
+    calib_1: boolean;
+    calib_2: boolean;
 
     remote: {
         conf?: HeadtrackerConfigPacket;
@@ -130,6 +132,27 @@ export class NetworkHeadtracker extends Headtracker {
                     log.info('Orientation reset on Headtracker '
                              + p.deviceID());
                     this.resetting_orientation = false;
+                    this.local.conf.clearStateFlag(HeadtrackerStateFlags.RESET_ORIENTATION);
+                }
+            }
+
+            if (this.calib_1) {
+                if (!p.isStateFlagSet(
+                        HeadtrackerStateFlags.CALIBRATE_1)) {
+                    log.info('Calibration step 1 completed on headtracker'
+                             + p.deviceID());
+                    this.calib_1 = false;
+                    this.local.conf.clearStateFlag(HeadtrackerStateFlags.CALIBRATE_1);
+                }
+            }
+
+            if (this.calib_2) {
+                if (!p.isStateFlagSet(
+                        HeadtrackerStateFlags.CALIBRATE_2)) {
+                    log.info('Calibration step 2 completed on headtracker'
+                             + p.deviceID());
+                    this.calib_2 = false;
+                    this.local.conf.clearStateFlag(HeadtrackerStateFlags.CALIBRATE_2);
                 }
             }
 
@@ -391,14 +414,18 @@ export class NetworkHeadtracker extends Headtracker {
         });
     }
 
-    beginInit(): Promise<void>
+    async beginInit()
     {
-        return undefined;
+        this.local.conf.setStateFlag(HeadtrackerStateFlags.CALIBRATE_1);
+        this.calib_1 = true;
+        this._updateDevice();
     }
 
-    finishInit(): Promise<void>
+    async finishInit(): Promise<void>
     {
-        return undefined;
+        this.local.conf.setStateFlag(HeadtrackerStateFlags.CALIBRATE_2);
+        this.calib_2 = true;
+        this._updateDevice();
     }
 
     applyNetworkSettings(settings: HeadtrackerNetworkSettings)

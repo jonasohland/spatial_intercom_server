@@ -44,6 +44,11 @@ export interface UserPanInputMessage {
     value: number
 }
 
+export interface UserAssignHeadtrackerMessage {
+    userid: string,
+    headtrackerid: number
+}
+
 export function basicSpatializedInput(inputid: string, userid: string, type: PortTypes): SpatializedInputData {
     let defaultSource = SourceUtils[type].defaults();
     return {

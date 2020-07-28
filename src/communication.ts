@@ -685,6 +685,12 @@ export class SINodeWSClient {
  */
 export class SIServerWSSession extends Connection {
 
+    remoteInfo()
+    {
+        let addr_arr = this._sock.handshake.address.split(':');
+        return addr_arr[addr_arr.length - 1];
+    }
+
     begin(): void
     {
         throw new Error('Method not implemented.');

@@ -1,5 +1,5 @@
 import { Node } from './core';
-import { NodeIdentification } from './communication';
+import { NodeIdentification, SIServerWSSession } from './communication';
 import { NodeAudioInputManager } from './inputs';
 import { DSPController } from './dsp_process';
 import { Graph } from './dsp_graph';
@@ -26,12 +26,11 @@ export const DSPModuleNames = {
 
 export class DSPNode extends Node {
 
-    init() {
-
-    }
+    init() { 
+    }   
 
     start() {
-        this.emitToModule(DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.FULL_REBUILD);
+        
     }
 
     destroy()

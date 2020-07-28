@@ -53,10 +53,12 @@ export function merge(cmd_opts: commander.Command)
         node_name?: string, 
         webserver?: boolean, 
         server_port?: number,
-        webserver_port?: number 
+        webserver_port?: number,
+        rrcs?: string
     } = {};
 
     if (!_config_file.network) _config_file.network = {};
+    if (!_config_file.artist) _config_file.artist = {};
 
     let interface_: string
         = cmd_opts.interface || _config_file.network.interface;
@@ -64,6 +66,8 @@ export function merge(cmd_opts: commander.Command)
     let webif_opt: string
         = cmd_opts.webInterface || _config_file.network.web_interface
           || cmd_opts.interface || _config_file.network.interface;
+
+    output.rrcs = cmd_opts.rrcs || _config_file.artist.rrcs
 
     const netifs = os.networkInterfaces();
 

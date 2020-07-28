@@ -17,7 +17,8 @@ import {
     UserData,
     UserDeleteInputMessage,
     UserModifyInputMessage,
-    UserPanInputMessage
+    UserPanInputMessage,
+    UserAssignHeadtrackerMessage
 } from './users_defs';
 import {ensurePortTypeEnum} from './util';
 
@@ -445,6 +446,10 @@ export class UsersManager extends ServerModule {
                                   GraphBuilderInputEvents.ELV, data.userid,
                                   data.spid, data.value);
             });
+
+        this.handleWebInterfaceEvent('user.headtracker', (socket: SocketIO.Socket, node: DSPNode, data: UserAssignHeadtrackerMessage) => {
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ASSIGN_HEADTRACKER, data.userid, data.headtrackerid);
+        });
 
         this.handleWebInterfaceEvent(
             'user.modify',

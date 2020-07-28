@@ -23,11 +23,60 @@ let comCheckInterval = 10000;
 
 const log = Logger.get('HTKHST');
 
+export const HeadtrackerInputEvents = {
+    RESET_HEADTRACKER: 'headtracker-reset',
+    CALIBRATE_STEP1: 'calibrate-one',
+    CALIBRATE_STEP2: 'calibrate-two',
+    HEADTRACKER_ON: 'headtracker-on',
+    HEADTRACKER_OFF: 'headtracker-off'
+}
+
 export class Headtracking extends ServerModule {
 
     init() {
 
-    }
+        this.events.on(HeadtrackerInputEvents.RESET_HEADTRACKER, (id: number) => {
+            let htrk = this.getHeadtracker(id);
+            if(htrk)
+                htrk.resetOrientation();
+            else
+                log.error(`Could not reset headtracker ${id}, headtracker not found`);
+        });
+
+        this.events.on(HeadtrackerInputEvents.CALIBRATE_STEP1, (id: number) => {
+            let htrk = this.getHeadtracker(id);
+            if(htrk) {
+                htrk.beginInit().catch(err => {
+                    log.error("Could initialize headtracker vectors: ", err);
+                });
+            } else 
+                log.error(`Could initialize headtracker vectors: Headtracker ${id} not found`);
+        });
+
+        this.events.on(HeadtrackerInputEvents.CALIBRATE_STEP2, (id: number) => {
+            let htrk = this.getHeadtracker(id);
+            if(htrk) {
+                htrk.finishInit().catch(err => {
+                    log.error("Could not finish headtracker initialization: " + err);
+                });
+            } else
+                log.error(`Could not finish headtracker initialization: Headtracker ${id} not found`);
+        });
+
+        this.events.on(HeadtrackerInputEvents.HEADTRACKER_ON, (id) => {
+            let htrk = this.getHeadtracker(id);
+            if(htrk) {
+                htrk.enableTx();
+            }
+        });
+
+        this.events.on(HeadtrackerInputEvents.HEADTRACKER_OFF, (id) => {
+            let htrk = this.getHeadtracker(id);
+            if(htrk) {
+                htrk.disableTx();
+            }
+        });
+    }   
 
     joined(sock: SocketIO.Socket, topic: string) {
 
@@ -36,17 +85,7 @@ export class Headtracking extends ServerModule {
     left() {
 
     }
-
-    onShowfileLoad(s: Showfile): void {
-        log.info("")
-    }
-    onEmptyShowfileCreate(s: Showfile): void {
-        // nothing to do here
-    }
-    targetName() {
-        return "headtracking";
-    }
-
+    
     local_interface: string;
 
     browser: dnssd.Browser;
@@ -104,15 +143,18 @@ export class Headtracking extends ServerModule {
                           log.info('Invertation changed on headtracker ' + id)
                           self.getHeadtracker(id).setInvertation(inv) });
 
-                          socket.on('htrk.save.settings',
-                                    (settings: HeadtrackerNetworkSettings) => {
-                                        self.getHeadtracker(settings.id)
-                                            .applyNetworkSettings(settings);
-                                    });
+            socket.on('htrk.save.settings',
+                    (settings: HeadtrackerNetworkSettings) => {
+                        self.getHeadtracker(settings.id)
+                            .applyNetworkSettings(settings);
+                    });
 
-                          socket.on('htrk.reset.orientation',
-                                    (id: number) => self.getHeadtracker(id)
-                                                        .resetOrientation());
+            socket.on('htrk.reset.orientation',
+                    (id: number) => self.getHeadtracker(id)
+                                        .resetOrientation());
+
+            socket.on('htrk.init.1', (id: number) => self.getHeadtracker(id).beginInit());
+            socket.on('htrk.init.2', (id: number) => self.getHeadtracker(id).finishInit());
         });
     }
 

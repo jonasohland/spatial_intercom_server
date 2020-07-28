@@ -5,7 +5,7 @@ import { PortTypes, stringToPortType, SourceUtils} from './dsp_defs'
 import * as Logger from './log';
 import {VSTScanner} from './vst';
 
-const log = Logger.get('DSP');
+const log = Logger.get('DSPGPH');
 
 function _portarr_chcount(ports: Port[])
 {

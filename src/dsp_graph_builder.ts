@@ -10,6 +10,8 @@ import { SourceParameterSet } from "./dsp_defs";
 import { Room, NodeRooms } from "./rooms";
 import { RoomData } from "./rooms_defs";
 import { some } from "lodash";
+import { SIServerWSSession } from './communication';
+import { SpatialIntercomServer } from "./server";
 
 const log = Logger.get('DSPBLD');
 
@@ -24,7 +26,8 @@ export const GraphBuilderInputEvents = {
     ROOM_SHAPE: 'roomshape',
     ROOM_ATTN: 'roomattn',
     ROOM_HIGHSHELF: 'roomhighshelf',
-    ROOM_LOWSHELF: 'roomlowshelf'
+    ROOM_LOWSHELF: 'roomlowshelf',
+    ASSIGN_HEADTRACKER: 'assignheadtracker',
 }
 
 export const GraphBuilderOutputEvents = {
@@ -69,6 +72,8 @@ export class NodeDSPGraphBuilder extends NodeModule {
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_HIGHSHELF, this._dispatch_room_highshelf.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_LOWSHELF, this._dispatch_room_lowshelf.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_SHAPE, this._dispatch_room_shape.bind(this));
+        this.handleModuleEvent(GraphBuilderInputEvents.ASSIGN_HEADTRACKER, this._dispatch_assign_headtracker.bind(this));
+        console.log("Remote node address", (<SIServerWSSession> this.myNode().remote()).remoteInfo());
     }
 
     start(connection: Connection)
@@ -181,6 +186,24 @@ export class NodeDSPGraphBuilder extends NodeModule {
         this._find_spatializers_for_room(roomid).forEach(sp => sp.setRoomLowshelf(room));
     }
 
+    _dispatch_assign_headtracker(userid: string, headtrackerid: number)
+    {
+        log.info("Assign headtracker " + headtrackerid + "to user " + userid);
+        let headtracker = this.headtrackers().getHeadtracker(headtrackerid);
+        if(headtracker) {
+            try {
+                headtracker.setStreamDest((<SIServerWSSession> this.myNode().remote()).remoteInfo(), 10099);
+            }
+            catch(err) {
+
+            }
+        }
+
+        if(this.user_modules[userid]) {
+            this.user_modules[userid].setHeadtrackerId(headtrackerid);
+        }
+    }
+
     _build_user_modules() 
     {
         this.nodeUsers().listRawUsersData().forEach((usr) => {
@@ -214,19 +237,24 @@ export class NodeDSPGraphBuilder extends NodeModule {
     }
 
     getRooms() {
-        return (<NodeRooms> this.myNode().getModule(DSPModuleNames.ROOMS));
+        return (<DSPNode> this.myNode()).rooms;
     }
 
     nodeUsers() {
-        return <NodeUsersManager> this.myNode().getModule(DSPModuleNames.USERS);
+        return (<DSPNode> this.myNode()).users;
     }
 
     nodeInputs() {
-        return <NodeAudioInputManager> this.myNode().getModule(DSPModuleNames.INPUTS);
+        return (<DSPNode> this.myNode()).inputs;
+    }
+
+    headtrackers()
+    {
+        return (<SpatialIntercomServer> this._server).headtracking;
     }
 
     dsp() {
-        return <DSPController> this.myNode().getModule(DSPModuleNames.DSP_PROCESS);
+        return (<DSPNode> this.myNode()).dsp_process;
     }
 
     graph() {
@@ -247,6 +275,7 @@ export class DSPGraphController extends ServerModule {
         this.handleGlobalWebInterfaceEvent('committodsp', (socket: SocketIO.Socket, data) => {
             this.server.nodes().forEach(node => {
                 if(node.type() == NODE_TYPE.DSP_NODE) {
+                    log.info("Rebuild graph on node " + node.name());
                     this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.FULL_REBUILD);
                 }
             })

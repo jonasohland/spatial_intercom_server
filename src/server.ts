@@ -15,6 +15,7 @@ import { DSPNode } from './dsp_node';
 import { UsersManager } from './users';
 import { Rooms } from './rooms';
 import { DSPGraphController } from './dsp_graph_builder';
+import { RRCSModule } from './rrcs';
 
 const log = Logger.get('SERVER');
 
@@ -39,6 +40,7 @@ export class SpatialIntercomServer extends Server {
     rooms: Rooms;
     headtracking: Headtracking;
     graphcontroller: DSPGraphController;
+    rrcs: RRCSModule;
 
     constructor(config: any)
     {
@@ -52,6 +54,7 @@ export class SpatialIntercomServer extends Server {
             htrk.setStreamDest("192.168.178.99", 4009);
         });
 
+        this.rrcs = new RRCSModule(config);
         this.webif = webif;
         this.audio_devices = new AudioDevices();
         this.inputs = new AudioInputsManager();
@@ -59,6 +62,7 @@ export class SpatialIntercomServer extends Server {
         this.rooms = new Rooms();
         this.headtracking = new Headtracking(this.webif);
         this.graphcontroller = new DSPGraphController();
+        this.add(this.rrcs);
         this.add(this.webif);
         this.add(this.audio_devices);
         this.add(this.inputs);

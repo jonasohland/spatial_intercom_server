@@ -23,6 +23,11 @@ export enum PortTypes {
     Ambi_O11
 }
 
+export function isAmbi(ty: PortTypes)
+{
+    return ty >= PortTypes.Ambi_O0;
+}
+
 export function stringToPortType(str: string)
 {
     switch (str.toLocaleLowerCase()) {
