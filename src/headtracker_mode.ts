@@ -121,8 +121,6 @@ class OSCController {
                             z : axs.indexOf('z') != -1
                         };
 
-                        console.log(inv);
-
                         this.ht.trackers.forEach(t => t.setInvertation(inv));
                     }
                 }

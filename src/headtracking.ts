@@ -119,7 +119,6 @@ export class Headtracking extends ServerModule {
             })
 
             socket.on('htrk.sr.changed', (id: number, sr: number) => {
-                console.log('sr changed')
                 self.getHeadtracker(id).setSamplerate(sr);
             })
 
@@ -163,8 +162,6 @@ export class Headtracking extends ServerModule {
         log.info('Found new headtracking service on ' + service.addresses[0]);
 
         let id = Number.parseInt(service.host.substr(8, 2));
-
-        console.log(service);
 
         let htrk = new NetworkHeadtracker(this.webif,
                                    id,

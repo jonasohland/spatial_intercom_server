@@ -75,7 +75,6 @@ export class BasicSpatializer extends NativeNode {
 
     remoteAttached(): void
     {
-        console.log('Remote attached!');
     }
 
     async setAzimuthDeg(value: number)
@@ -120,7 +119,6 @@ export class AdvancedSpatializer extends NativeNode {
 
     remoteAttached(): void
     {
-        console.log('Remote attached!');
     }
 
     onRemoteAlive(): void
@@ -781,7 +779,6 @@ export class MulitSpatializerModule extends SpatializationModule {
     }
 
     setAzimuth(a: number): void {
-        console.log("Multispatializer " + a);
         this._params_cached.a = a;
         if(this._spatializer_node)
             this._spatializer_node.setAzimuth(a);

@@ -5,7 +5,6 @@ import * as net from 'net';
 import * as os from 'os';
 
 import * as Logger from './log';
-import { profileEnd } from 'console';
 
 const log = Logger.get('CONFIG');
 
@@ -54,7 +53,9 @@ export function merge(cmd_opts: commander.Command)
         webserver?: boolean, 
         server_port?: number,
         webserver_port?: number,
-        rrcs?: string
+        rrcs?: string,
+        rrcs_osc_host?: string,
+        rrcs_osc_port?: number 
     } = {};
 
     if (!_config_file.network) _config_file.network = {};
@@ -67,7 +68,11 @@ export function merge(cmd_opts: commander.Command)
         = cmd_opts.webInterface || _config_file.network.web_interface
           || cmd_opts.interface || _config_file.network.interface;
 
-    output.rrcs = cmd_opts.rrcs || _config_file.artist.rrcs
+    output.rrcs = cmd_opts.rrcs || _config_file.artist.rrcs;
+
+    output.rrcs_osc_host = cmd_opts.rrcsOscHost || _config_file.artist.rrcs_osc_host || '127.0.0.1';
+    output.rrcs_osc_port = cmd_opts.rrcsOscPort || _config_file.artist.rrcs_osc_port || 9955;
+    output.rrcs_osc_port = Number.parseInt(<any> output.rrcs_osc_port);
 
     const netifs = os.networkInterfaces();
 

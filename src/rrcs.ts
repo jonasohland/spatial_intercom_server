@@ -1,18 +1,26 @@
 import {loopback} from 'ip';
-import {RRCS_Client, RRCS_Server} from 'riedel_rrcs';
+import {RRCS_Client, RRCS_Server, RRCSServerType} from 'riedel_rrcs';
 
 import {ServerModule} from './core';
 import * as Logger from './log';
 import { HeadtrackerInputEvents } from './headtracking';
+import { createSocket, Socket } from 'dgram';
+import { OSCMessage, toBuffer } from 'osc-min';
 
 const log = Logger.get('RRCSSV');
 
 export class RRCSModule extends ServerModule {
 
-    rrcssrv: RRCS_Server;
+    rrcssrv: RRCSServerType;
+    local_sock: Socket;
+    config: any;
 
     init()
     {
+        this.handleGlobalWebInterfaceEvent('reconnect-rrcs', (socket, data) => {
+            log.info("Reconnect RRCS");
+            this.reconnectRRCS();
+        });
     }
 
     joined(socket: SocketIO.Socket)
@@ -26,13 +34,77 @@ export class RRCSModule extends ServerModule {
     constructor(config: any)
     {
         super('rrcs');
-        console.log(config);
+        this.config = config;
 
-        if (config.rrcs) {
-            this.rrcssrv
-                = new RRCS_Server({ ip : '0.0.0.0', port : 6870 },
-                                  { ip : config.rrcs, port : 8193 }, this);
+        this.local_sock = createSocket('udp4', (msg, rinfo) => {
+
+        });
+
+        this.local_sock.on('error', (err) => {
+            log.error("RRCS to OSC socket error: " + err);
+        });
+
+        this.local_sock.on('close', () => {
+            log.warn("RRCS to OSC socket closed");
+        });
+
+        this.reconnectRRCS();
+    }
+
+    reconnectRRCS() 
+    {   
+        if (this.config) {
+            if(this.rrcssrv) {
+                this.rrcssrv.server.httpServer.close();
+                this.rrcssrv.server.httpServer.on('close', () => {
+                    log.warn('RRCS Server closed');
+                    this.startRRCS();
+                });
+            } else
+                this.startRRCS();
         }
+    }
+
+    startRRCS() {
+        this.rrcssrv = RRCS_Server({ ip : '0.0.0.0', port : 6870 },
+                    { ip : this.config.rrcs, port : 8193 }, this);
+    }
+
+    processOSCCommand(cmd: string[])
+    {
+        let ccmd = cmd[0].split(' ');
+        let addr = ccmd.shift();
+        let msg: OSCMessage = {
+            address: addr,
+            oscType: 'message',
+            args: []
+        }
+
+        ccmd.forEach(arg => {
+            try {
+                if(/^\d+$/.test(arg)) {
+                    msg.args.push({
+                        type: 'integer',
+                        value: Number.parseInt(arg)
+                    });
+                } else if (!isNaN(<number> <unknown> arg)) {
+                    msg.args.push({
+                        type: 'float',
+                        value: Number.parseFloat(arg)
+                    });
+                } else {
+                    msg.args.push({
+                        type: 'string',
+                        value: arg
+                    });
+                }
+            }   
+            catch(err) {
+                log.error("Could not convert arg to OSC Type " + err);
+            }
+
+            this.local_sock.send(toBuffer(msg), this.config.rrcs_osc_port, this.config.rrcs_osc_host);
+        });
     }
 
     processStringCommand(str: string)
@@ -43,6 +115,8 @@ export class RRCSModule extends ServerModule {
             case 'headtracker':
                 this.processHeadtrackerCommand(cmd);
                 break;
+            case 'osc': 
+                this.processOSCCommand(cmd);
         }
     }
 
@@ -90,11 +164,14 @@ export class RRCSModule extends ServerModule {
      */
     initial(msg: any, error: any)
     {
-        console.log(msg);
-        console.log(error);
+        this.webif.broadcastNotification('RRCS', msg);
+        if (error)
+            console.log(error);
     }
     log(msg: any)
     {
+        if(this.webif)
+            this.webif.broadcastNotification('RRCS', msg);
         log.info(msg);
     }
     error(err: any)

@@ -7,12 +7,44 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Launch Program",
+            "name": "Server",
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/dist/index.js",
+            "program": "${workspaceFolder}/bin/cli.js",
+            "args": ["server"],
             "preLaunchTask": "tsc: build - tsconfig.json",
+            "outputCapture": "std",
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js"
+            ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Node",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "${workspaceFolder}/bin/cli.js",
+            "args": ["node"],
+            "preLaunchTask": "tsc: build - tsconfig.json",
+            "outputCapture": "std",
+            "outFiles": [
+                "${workspaceFolder}/dist/**/*.js"
+            ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Headtracker-Bridge",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "${workspaceFolder}/bin/cli.js",
+            "args": ["htrk-bridge", "--auto"],
+            "preLaunchTask": "tsc: build - tsconfig.json",
+            "outputCapture": "std",
             "outFiles": [
                 "${workspaceFolder}/dist/**/*.js"
             ]

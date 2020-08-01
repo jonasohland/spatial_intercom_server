@@ -17,8 +17,10 @@ program.command('server')
 .option('-z, --webserver-port <port>')
 .option('-l, --log-level <loglvl>', 'Set the log level')
 .option('-c, --config <config_file>', 'load this config file instead of the default one')
-.option('-r, --rrcs <host>')
-.option('--no-webserver')
+.option('-r, --rrcs <host>', 'hostname or ip address of the rrcs gateway')
+.option('--rrcs-osc-host <host>', 'where to send osc messages translated from string sent to rrcs (default: 127.0.0.1)')
+.option('--rrcs-osc-port <port>', '(default: 9955)')
+.option('--no-webserver', 'dont start a local webserver')
 .option('--no-timecode', 'disable timecode data option')
 .action(server_mode);
 

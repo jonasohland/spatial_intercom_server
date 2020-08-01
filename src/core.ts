@@ -836,7 +836,7 @@ export class NodeDataStorage extends NodeMessageInterceptor {
 
     updateObject(msg: UpdateObjectMessage)
     {
-        console.log(JSON.stringify(msg, null, 2));
+        log.verbose(`Update object ${msg.module} -> ${msg.register} -> ${msg.data.object_id}`);
         if (this._modules[msg.module]) {
             let mod = this._modules[msg.module];
             let regidx

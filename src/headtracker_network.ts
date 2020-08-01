@@ -394,8 +394,6 @@ export class NetworkHeadtracker extends Headtracker {
         else
             this.local.conf.clearStateFlag(HeadtrackerStateFlags.INVERT_Z);
 
-        console.log(this.local.conf.device_state);
-
         this._updateDevice();
     }
 

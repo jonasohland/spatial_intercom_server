@@ -94,7 +94,7 @@ export class InputManager extends ShowfileTarget {
         webif.io.on('connection', socket => {
             socket.on('inputs.update',
                       () => { self.updateInterface(socket).catch(err => {
-                          console.log(err);
+                          log.error("Failed to update web interface: ", err);
                       }) });
 
             socket.on('inputs.add', this.addInput.bind(self));
