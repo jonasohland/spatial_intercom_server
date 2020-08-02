@@ -41,6 +41,8 @@ export class NodeDSPGraphBuilder extends NodeModule {
     basic_spatializers: Record<string, Record<string, MulitSpatializerModule>> = {};
     room_spatializers: Record<string, Record<string, RoomSpatializerModule>> = {};
 
+    is_building: boolean = false;
+
     constructor()
     {
         super(DSPModuleNames.GRAPH_BUILDER);
@@ -89,6 +91,10 @@ export class NodeDSPGraphBuilder extends NodeModule {
 
     _do_rebuild_graph_full() 
     {
+        if(this.is_building)
+            log.error("Currently rebuilding graph.");
+
+        this.is_building = true;
         this.dsp().resetGraph().then(() => {
 
             this.user_modules = {};
@@ -102,7 +108,9 @@ export class NodeDSPGraphBuilder extends NodeModule {
                 log.error("Failed to build modules: ", err);
             }
 
-            this.dsp().syncGraph();
+            this.dsp().syncGraph().then(() => {
+                this.is_building = false;
+            });
         }).catch(err => {
             log.error("Could not reset graph: " + err);
         })
@@ -287,8 +295,9 @@ export class DSPGraphController extends ServerModule {
             })
         });
 
-        this.handleWebInterfaceEvent('committodsp', (socket: SocketIO.Socket, node: DSPNode) => {
-            node.dsp_graph_builder.rebuildGraph();
+        this.handleWebInterfaceEvent('committnodeodsp', (socket: SocketIO.Socket, node: DSPNode) => {
+            log.warn("REBUILD " + node.name());
+            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.FULL_REBUILD);
         });
 
         this.handleWebInterfaceEvent('rebuildgraph', (socket: SocketIO.Socket, node: DSPNode) => {
