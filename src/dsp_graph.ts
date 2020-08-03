@@ -644,8 +644,8 @@ export class Graph {
                 {
                 }
 
-                obj.ins_count  = n.getMainInputBus() ? n.getMainInputBus().channelCount() : 0;
-                obj.outs_count = n.getMainOutputBus() ? n.getMainOutputBus().channelCount() : 0;
+                obj.ins_count  = n.inputChannelCount();
+                obj.outs_count = n.outputChannelCount();
 
                 obj.id             = n.id;
                 obj.type           = n.type;

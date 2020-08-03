@@ -1,15 +1,10 @@
 import { NodeModule, ServerModule } from "./core";
 import { Connection, NODE_TYPE } from "./communication";
-import { AdvancedSpatializerModule,  MulitSpatializerModule, SimpleUsersModule, RoomSpatializerModule, MultiSpatializer } from "./dsp_modules";
+import {  MultiSpatializerModule, SimpleUsersModule, RoomSpatializerModule } from "./dsp_modules";
 import  * as Logger from './log';
 import { DSPModuleNames, DSPNode } from "./dsp_node";
-import { NodeUsersManager } from "./users";
-import { NodeAudioInputManager } from "./inputs";
-import { DSPController } from "./dsp_process";
 import { SourceParameterSet } from "./dsp_defs";
-import { Room, NodeRooms } from "./rooms";
 import { RoomData } from "./rooms_defs";
-import { some } from "lodash";
 import { SIServerWSSession } from './communication';
 import { SpatialIntercomServer } from "./server";
 
@@ -39,7 +34,7 @@ export const GraphBuilderOutputEvents = {
 export class NodeDSPGraphBuilder extends NodeModule {
 
     user_modules: Record<string, SimpleUsersModule> = {};
-    basic_spatializers: Record<string, Record<string, MulitSpatializerModule>> = {};
+    basic_spatializers: Record<string, Record<string, MultiSpatializerModule>> = {};
     room_spatializers: Record<string, Record<string, RoomSpatializerModule>> = {};
 
     is_building: boolean = false;
@@ -139,7 +134,7 @@ export class NodeDSPGraphBuilder extends NodeModule {
                 }
                 else {
                     log.verbose(`Build basic input module for ${input.get().id}`);
-                    let mod = new MulitSpatializerModule(input);
+                    let mod = new MultiSpatializerModule(input);
                     this.basic_spatializers[userdata.id][input.get().id] = mod;
                     mod.pan(input.params());
                     this.graph().addModule(mod);

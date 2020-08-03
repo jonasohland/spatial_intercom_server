@@ -397,6 +397,12 @@ export class UsersManager extends ServerModule {
     {
     }
 
+    _publish_userinput_list(node: DSPNode, userid: string) 
+    {
+        let inputs = node.users.getUsersInputs(userid);
+        this.publish(`${userid}.userinputs`, `${userid}.userinputs`, node.inputs.getRawInputDescriptionList(), inputs.map(inp => inp.get()));
+    }
+
     _join_userspecific(socket: SocketIO.Socket, userid: string, topic: string)
     {
         switch (topic) {
@@ -444,18 +450,23 @@ export class UsersManager extends ServerModule {
             'user.add.inputs', (socket: SocketIO.Socket, node: DSPNode,
                                 data: UserAddInputsMessage) => {
                 data.inputs.forEach(input => {
-                    let nodein = node.inputs.findInputForId(input.id);
-                    if (nodein) {
-                        let user = node.users.findUserForId(data.userid);
-                        if (user)
-                            node.users.addInputToUser(user.get().id, nodein);
+                    try {
+                        let nodein = node.inputs.findInputForId(input.id);
+                        if (nodein) {
+                            let user = node.users.findUserForId(data.userid);
+                            if (user)
+                                node.users.addInputToUser(user.get().id, nodein);
+                            else
+                                this.webif.error(`User ${data.userid} not found`);
+                        }
                         else
-                            this.webif.error(`User ${data.userid} not found`);
+                            this.webif.error(`Input ${input.name} not found`);
+                    } catch (err) {
+                        log.error("Could not assign new input " + err);
                     }
-                    else
-                        this.webif.error(`Input ${input.name} not found`);
                 });
                 node.users.publishUserInputs(data.userid);
+                this._publish_userinput_list(node, data.userid);
                 node.users.updateWebInterfaces();
             });
 
@@ -463,6 +474,7 @@ export class UsersManager extends ServerModule {
             'user.delete.input', (socket: SocketIO.Socket, node: DSPNode,
                                   data: UserDeleteInputMessage) => {
                 node.users.removeInputFromUser(data.userid, data.input);
+                this._publish_userinput_list(node, data.userid);
             });
 
         this.handleWebInterfaceEvent(
@@ -518,7 +530,6 @@ export class UsersManager extends ServerModule {
                 let idata = input.get();
                 idata.gain = data.gain;
                 input.set(idata).then(() => input.save()).catch(err => { log.error(`Could not set new gain: ${err}`) });
-
             }
             else
                 log.error("Could not find node for user " + data.user);
