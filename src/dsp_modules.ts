@@ -39,6 +39,9 @@ function normalizeIEMStWidthDegs(value: number)
 
 export class GainNode extends NativeNode {
 
+    _remote_alive: boolean = false;
+    _gain: number = 0;
+
     constructor(name: string, ty: PortTypes)
     {
         super(name, "gain_node");
@@ -46,11 +49,19 @@ export class GainNode extends NativeNode {
         this.addOutputBus(Bus.createMain(1, ty));
     }
 
+    setGain(gain: number) 
+    {
+        this._gain = gain;
+        if(this._remote_alive)
+            this.remote.set('gain', this._gain);
+    }
+
     onRemotePrepared(): void {
 
     }
     onRemoteAlive(): void {
-
+        this._remote_alive = true;
+        this.remote.set('gain', this._gain).catch(err => log.error(`Could not set gain for gain-node ${err}`));
     }
     remoteAttached(): void {
 
@@ -361,6 +372,7 @@ export abstract class SpatializationModule extends Module {
     abstract pan(params: SourceParameterSet) : void;
     abstract setAzimuth(a: number): void;
     abstract setElevation(e: number): void;
+    abstract setGain(gain: number): void; 
     abstract userId(): string;
     abstract outputBuses(graph: Graph): Bus[];
 }
@@ -372,6 +384,7 @@ export class MultiSpatializer extends NativeNode {
     _chcount: number;
     _params: SourceParameterSet;
     _mute: boolean = false;
+    _gain: number = 0.;
 
     setElevation(elevation: number)
     {
@@ -385,6 +398,12 @@ export class MultiSpatializer extends NativeNode {
         this._params.a = azimuth;
         if(this.remote)
             this._apply_sources().catch(err => {});
+    }
+
+    setGain(gain: number) {
+        this._gain = gain;
+        if(this.remote)
+            this._apply_gain().catch(err => log.error(`Could not apply gain: ${err}`));
     }
 
     pan(params: SourceParameterSet)
@@ -423,12 +442,18 @@ export class MultiSpatializer extends NativeNode {
     async _apply_all_parameters() 
     {
         await this.remote.set('mute', this._mute);
+        await this.remote.set('gain', this._gain);
         return this._apply_sources();
     }
 
     async _apply_sources()
     {
         return this.remote.set('sources', SourceUtils[this._chtype].pan(this._params));
+    }
+
+    async _apply_gain() 
+    {
+        return this.remote.set('gain', this._gain);
     }
 
     constructor(name: string, type: PortTypes)
@@ -448,6 +473,7 @@ export class RoomSpatializer extends NativeNode {
     _cached_source: Source;
     _remote_alive: boolean = false;
     _roomdata: RoomData;
+    _gain = 0;
 
     constructor(name: string)
     {
@@ -469,12 +495,19 @@ export class RoomSpatializer extends NativeNode {
         this._remote_alive = true;
         this.panSource(this._cached_source);
         this._set_roomdata().catch(err => log.error("Could not set roomdata " + err));
+        this.remote.set('gain', this._gain).catch(err => log.error("Could not set gain " + err));
     }
 
     panSource(source: Source)
     {
         this._cached_source = source;
         this._setxyz(source.a, source.e);
+    }
+
+    setGain(gain: number) {
+        this._gain = gain;
+        if(this._remote_alive) 
+            this.remote.set('gain', this._gain);
     }
 
     setRoomData(room: RoomData)
@@ -627,6 +660,7 @@ export class RoomSpatializerModule extends SpatializationModule {
     _encoder_nids: number[] = [];
     _encoders: RoomSpatializer[] = [];
     _gain_node: GainNode;
+    _gain: number;
     _cached_params: SourceParameterSet;
     _roomdata: RoomData;
 
@@ -634,6 +668,7 @@ export class RoomSpatializerModule extends SpatializationModule {
     {
         super();
         this._input = input;
+        this._gain = input.get().gain;
         this._cached_params = SourceUtils[input.findSourceType()].defaults();
         this._roomdata = roomdata;
     }
@@ -665,6 +700,14 @@ export class RoomSpatializerModule extends SpatializationModule {
     setElevation(e: number): void {
         this._cached_params.e = e;
         this.pan(this._cached_params);
+    }
+
+    setGain(gain: number) {
+        this._gain = gain;
+        if(this._gain_node)
+            this._gain_node.setGain(gain);
+        else
+            this._encoders.forEach(enc => enc.setGain(gain));
     }
 
     setRoomData(room: RoomData)
@@ -730,6 +773,7 @@ export class RoomSpatializerModule extends SpatializationModule {
 
         if(isAmbi(sourcetype)) {
             this._gain_node = new GainNode("GainNode " + this._input.get().id, sourcetype);
+            this._gain_node.setGain(this._gain);
             this._encoder_nids.push(graph.addNode(this._gain_node));
             let connection = graph.graphRootBus().connectIdx(this._gain_node.getMainInputBus(), firstchannel);
             if(connection)
@@ -741,6 +785,7 @@ export class RoomSpatializerModule extends SpatializationModule {
 
                 let node = new RoomSpatializer('' + i);
                 node.setRoomData(this._roomdata);
+                node.setGain(this._gain);
                 this._encoder_nids.push(graph.addNode(node));
                 this._encoders.push(node);
                 let connection = graph.graphRootBus().connectIdx(node.getMainInputBus(), firstchannel + i);
@@ -770,6 +815,7 @@ export class MulitSpatializerModule extends SpatializationModule {
     _spatializer_node: MultiSpatializer;
     _gain_node: GainNode;
     _params_cached: SourceParameterSet;
+    _cached_gain = 0.;
     _ambi: boolean;
 
     pan(params: SourceParameterSet): void {
@@ -788,6 +834,12 @@ export class MulitSpatializerModule extends SpatializationModule {
         this._params_cached.e = e;
         if(this._spatializer_node)
             this._spatializer_node.setElevation(e);
+    }
+
+    setGain(gain: number) {
+        this._cached_gain = gain;
+        if(this._spatializer_node)
+            this._spatializer_node.setGain(this._cached_gain);
     }
 
     input(graph: Graph): Bus
@@ -818,6 +870,7 @@ export class MulitSpatializerModule extends SpatializationModule {
         if(this._ambi) {
             node = new GainNode("AmbiSource Gain " + this._input.get().id, this._input.findSourceType());
             this._gain_node = node;
+            node.setGain(this._cached_gain);
         } 
         else {
             node = new MultiSpatializer(
@@ -825,6 +878,7 @@ export class MulitSpatializerModule extends SpatializationModule {
                 this._input.findSourceType());
 
             this._spatializer_node = node;
+            node.setGain(this._cached_gain);
         }
 
         this._node_id = graph.addNode(node);
@@ -857,5 +911,6 @@ export class MulitSpatializerModule extends SpatializationModule {
         this._input = input;
         this._params_cached = SourceUtils[input.findSourceType()].defaults();
         this._ambi = isAmbi(input.findSourceType());
+        this._cached_gain = input.get().gain;
     }
 };

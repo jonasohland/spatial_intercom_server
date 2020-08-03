@@ -1,4 +1,4 @@
-import {Connection} from './communication';
+import {Connection, NODE_TYPE} from './communication';
 import {
     ManagedNodeStateListRegister,
     ManagedNodeStateObject,
@@ -14,11 +14,12 @@ import {
     basicSpatializedInput,
     SpatializedInputData,
     UserAddInputsMessage,
+    UserAssignHeadtrackerMessage,
     UserData,
     UserDeleteInputMessage,
     UserModifyInputMessage,
     UserPanInputMessage,
-    UserAssignHeadtrackerMessage
+    UserInputGainChangeMessage
 } from './users_defs';
 import {ensurePortTypeEnum} from './util';
 
@@ -104,7 +105,12 @@ export class SpatializedInput extends
 
     params(): SourceParameterSet
     {
-        return { a: this.data.azm, e: this.data.elv, height: this.data.height, width: this.data.width };
+        return {
+            a : this.data.azm,
+            e : this.data.elv,
+            height : this.data.height,
+            width : this.data.width
+        };
     }
 
     isInRoom()
@@ -219,7 +225,8 @@ export class NodeUsersManager extends NodeModule {
         if (this.findUserInput(userid, input.get().id))
             throw 'Input already assigned';
 
-        let newinput = basicSpatializedInput(input.get().id, userid, ensurePortTypeEnum(input.get().type));
+        let newinput = basicSpatializedInput(
+            input.get().id, userid, ensurePortTypeEnum(input.get().type));
 
         let userdata = user.get();
 
@@ -335,7 +342,7 @@ export class NodeUsersManager extends NodeModule {
     findUserForId(id: string)
     {
         return <User>this._users._objects.find((obj: User) => obj.get().id
-                                                              == id);
+                                                              === id);
     }
 
     start(remote: Connection)
@@ -379,10 +386,45 @@ export class UsersManager extends ServerModule {
 
     joined(socket: SocketIO.Socket, topic: string)
     {
+        log.verbose(`Socket joined user-topic ${topic}`);
+        let topicarr = topic.split('.');
+        switch (topicarr[0]) {
+            default: this._join_userspecific(socket, topicarr[0], topicarr[1]);
+        }
     }
 
     left(socket: SocketIO.Socket, topic: string)
     {
+    }
+
+    _join_userspecific(socket: SocketIO.Socket, userid: string, topic: string)
+    {
+        switch (topic) {
+            case 'userinputs':
+                this._join_userinputs(socket, userid);
+        }
+    }
+
+    _join_userinputs(socket: SocketIO.Socket, userid: string)
+    {
+        let node = this.findNodeForUser(userid);
+        if(node == null)
+            return log.error(`Node with user ${userid} not found`);
+     
+        let user = node.users.findUserForId(userid)
+        if(user == null)
+            return log.error(`User ${userid} not found`);
+
+        let inputs = node.users.getUsersInputs(userid);
+        socket.emit(`${userid}.userinputs`, node.inputs.getRawInputDescriptionList(), inputs.map(input => input.get()));
+    }
+
+    findNodeForUser(userid: string): DSPNode
+    {
+        return <DSPNode> this.server.nodes()
+            .filter(node => node.type() == NODE_TYPE.DSP_NODE)
+            .find((dspnode: DSPNode) => dspnode.users.findUserForId(userid)
+                                        != null);
     }
 
     init()
@@ -433,7 +475,7 @@ export class UsersManager extends ServerModule {
         this.handleWebInterfaceEvent(
             'user.input.azm', (socket: SocketIO.Socket, node: DSPNode,
                                data: UserPanInputMessage) => {
-                log.debug("Move " + data.value);
+                log.debug('Move ' + data.value);
                 this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
                                   GraphBuilderInputEvents.AZM, data.userid,
                                   data.spid, data.value);
@@ -447,14 +489,39 @@ export class UsersManager extends ServerModule {
                                   data.spid, data.value);
             });
 
-        this.handleWebInterfaceEvent('user.headtracker', (socket: SocketIO.Socket, node: DSPNode, data: UserAssignHeadtrackerMessage) => {
-            this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.ASSIGN_HEADTRACKER, data.userid, data.headtrackerid);
-        });
+        this.handleWebInterfaceEvent(
+            'user.headtracker', (socket: SocketIO.Socket, node: DSPNode,
+                                 data: UserAssignHeadtrackerMessage) => {
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.ASSIGN_HEADTRACKER,
+                                  data.userid, data.headtrackerid);
+            });
 
         this.handleWebInterfaceEvent(
             'user.modify',
             (socket: SocketIO.Socket, node: DSPNode, data: UserData) => {
                 node.users.modifyUser(data);
             });
+
+        this.handleGlobalWebInterfaceEvent('setgain', (socket: SocketIO.Socket, data: UserInputGainChangeMessage) => {
+            let node = this.findNodeForUser(data.user);
+            if(node)
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.SET_GAIN, data.user, data.id, data.gain);
+            else
+                log.error("Could not find node for user " + data.user);
+        });
+
+        this.handleGlobalWebInterfaceEvent('changegain', (socket: SocketIO.Socket, data: UserInputGainChangeMessage) => {
+            let node = this.findNodeForUser(data.user);
+            if(node){
+                let input = node.users.findInputById(data.id);
+                let idata = input.get();
+                idata.gain = data.gain;
+                input.set(idata).then(() => input.save()).catch(err => { log.error(`Could not set new gain: ${err}`) });
+
+            }
+            else
+                log.error("Could not find node for user " + data.user);
+        });
     }
 }

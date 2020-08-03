@@ -29,6 +29,7 @@ export const GraphBuilderInputEvents = {
     ROOM_HIGHSHELF: 'roomhighshelf',
     ROOM_LOWSHELF: 'roomlowshelf',
     ASSIGN_HEADTRACKER: 'assignheadtracker',
+    SET_GAIN: 'setgain'
 }
 
 export const GraphBuilderOutputEvents = {
@@ -76,6 +77,7 @@ export class NodeDSPGraphBuilder extends NodeModule {
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_LOWSHELF, this._dispatch_room_lowshelf.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_SHAPE, this._dispatch_room_shape.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ASSIGN_HEADTRACKER, this._dispatch_assign_headtracker.bind(this));
+        this.handleModuleEvent(GraphBuilderInputEvents.SET_GAIN, this._dispatch_set_gain.bind(this));
         log.info("Remote node address", (<SIServerWSSession> this.myNode().remote()).remoteInfo());
     }
 
@@ -154,6 +156,9 @@ export class NodeDSPGraphBuilder extends NodeModule {
         let module = this._find_spatializer(userid, spid);
         if(module)
             module.setAzimuth(azm);
+        else {
+            log.error(`Could not find spatializer for input user ${userid} input ${spid}`);
+        }
     }
 
     _dispatch_elevation_pan(userid: string, spid: string, elv: number)
@@ -161,6 +166,9 @@ export class NodeDSPGraphBuilder extends NodeModule {
         let module = this._find_spatializer(userid, spid);
         if(module)
             module.setElevation(elv);
+        else {
+            log.error(`Could not find spatializer for input user ${userid} input ${spid}`);
+        }
     }
 
     _dispatch_pan(userid: string, spid: string, params: SourceParameterSet)
@@ -168,6 +176,9 @@ export class NodeDSPGraphBuilder extends NodeModule {
         let module = this._find_spatializer(userid, spid);
         if(module)
             module.pan(params);
+        else {
+            log.error(`Could not find spatializer for input user ${userid} input ${spid}`);
+        }
     }
 
     _dispatch_room_enabled(roomid: string, room: RoomData)
@@ -209,13 +220,22 @@ export class NodeDSPGraphBuilder extends NodeModule {
                 headtracker.setStreamDest((<SIServerWSSession> this.myNode().remote()).remoteInfo(), 10099);
             }
             catch(err) {
-
+                log.error(`Could not set headtracker stream destination: ${err}`);
             }
         }
 
         if(this.user_modules[userid]) {
             this.user_modules[userid].setHeadtrackerId(headtrackerid);
         }
+    }
+
+    _dispatch_set_gain(userid: string, spid: string, gain: number)
+    {
+        let sp = this._find_spatializer(userid, spid);
+        if(sp)
+            sp.setGain(gain);
+        else
+            log.error(`Could not find spatializer for input user ${userid} input ${spid}`);
     }
 
     _build_user_modules() 

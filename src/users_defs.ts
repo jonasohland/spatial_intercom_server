@@ -9,6 +9,7 @@ export interface SpatializedInputData {
     room: string,
     azm: number,
     elv:  number,
+    gain: number,
     height?: number,
     width?: number,
 }
@@ -49,11 +50,18 @@ export interface UserAssignHeadtrackerMessage {
     headtrackerid: number
 }
 
+export interface UserInputGainChangeMessage {
+    gain: number,
+    id: string,
+    user: string
+}
+
 export function basicSpatializedInput(inputid: string, userid: string, type: PortTypes): SpatializedInputData {
     let defaultSource = SourceUtils[type].defaults();
     return {
         inputid, userid,
         id: uniqueId(),
+        gain: 0,
         room: null,
         azm: defaultSource.a,
         elv: defaultSource.e,
