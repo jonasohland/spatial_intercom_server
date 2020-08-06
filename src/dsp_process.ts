@@ -13,6 +13,7 @@ import { Node, NodeModule } from './core';
 import { Graph } from './dsp_graph';
 import { VSTScanner } from './vst';
 import { DSPModuleNames } from './dsp_node';
+import { DSPNodeStats } from './dsp_defs';
 
 const log = Logger.get("DSPROC");
 
@@ -229,7 +230,8 @@ export class DSPController extends NodeModule {
 
     joined(socket: SocketIO.Socket, topic: string)
     {
-
+        if (topic === 'dspstats') 
+            socket.emit(`${this.myNodeId()}.dspstats`, this._dspstats);
     }
 
     left(socket: SocketIO.Socket, topic: string)
@@ -244,6 +246,7 @@ export class DSPController extends NodeModule {
     _graph: Graph;
     _vst: VSTScanner;
     _connection: Connection;
+    _dspstats: DSPNodeStats;
 
     constructor(vst: VSTScanner)
     {
@@ -255,6 +258,10 @@ export class DSPController extends NodeModule {
         this._graph.setOutputNode(128);
     }
 
+    _publish_dspstats() 
+    {
+        this.publish('dspstats', `${this.myNodeId()}.dspstats`, this._dspstats);
+    }
 
     async syncGraph()
     {
@@ -263,7 +270,18 @@ export class DSPController extends NodeModule {
         return new Promise<void>((resolve, reject) => {
             log.info('Syncing graph with DSP process');
 
-            self._remote_graph.request('set', this._graph._export_graph())
+            let graph = this._graph._export_graph();
+
+            this._dspstats = {
+                num_dspobjects: graph.nodes.length,
+                num_connections: graph.connections.map(con => con.channelCount()).reduce((prev, current) => prev + current, 0),
+                num_ports: graph.connections.length,
+                num_renderops: graph.nodes.length * 2 - 1
+            }
+
+            this._publish_dspstats();
+
+            self._remote_graph.request('set', graph)
             .then(() => { log.info('Done Syncing')
                             resolve() })
             .catch(err => { log.error('Could not sync graph: ' + err.message)

@@ -1,5 +1,12 @@
 import { Port } from "./dsp_graph";
 
+export interface DSPNodeStats {
+    num_dspobjects: number,
+    num_connections: number,
+    num_ports: number,
+    num_renderops: number,
+}
+
 export enum PortTypes {
     Any,
     Mono,
