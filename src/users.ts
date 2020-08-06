@@ -17,9 +17,9 @@ import {
     UserAssignHeadtrackerMessage,
     UserData,
     UserDeleteInputMessage,
+    UserInputGainChangeMessage,
     UserModifyInputMessage,
-    UserPanInputMessage,
-    UserInputGainChangeMessage
+    UserPanInputMessage
 } from './users_defs';
 import {ensurePortTypeEnum} from './util';
 
@@ -397,37 +397,40 @@ export class UsersManager extends ServerModule {
     {
     }
 
-    _publish_userinput_list(node: DSPNode, userid: string) 
+    _publish_userinput_list(node: DSPNode, userid: string)
     {
         let inputs = node.users.getUsersInputs(userid);
-        this.publish(`${userid}.userinputs`, `${userid}.userinputs`, node.inputs.getRawInputDescriptionList(), inputs.map(inp => inp.get()));
+        this.publish(`${userid}.userinputs`, `${userid}.userinputs`,
+                     node.inputs.getRawInputDescriptionList(),
+                     inputs.map(inp => inp.get()));
     }
 
     _join_userspecific(socket: SocketIO.Socket, userid: string, topic: string)
     {
         switch (topic) {
-            case 'userinputs':
-                this._join_userinputs(socket, userid);
+            case 'userinputs': this._join_userinputs(socket, userid);
         }
     }
 
     _join_userinputs(socket: SocketIO.Socket, userid: string)
     {
         let node = this.findNodeForUser(userid);
-        if(node == null)
+        if (node == null)
             return log.error(`Node with user ${userid} not found`);
-     
+
         let user = node.users.findUserForId(userid)
-        if(user == null)
-            return log.error(`User ${userid} not found`);
+        if (user == null)
+        return log.error(`User ${userid} not found`);
 
         let inputs = node.users.getUsersInputs(userid);
-        socket.emit(`${userid}.userinputs`, node.inputs.getRawInputDescriptionList(), inputs.map(input => input.get()));
+        socket.emit(`${userid}.userinputs`,
+                    node.inputs.getRawInputDescriptionList(),
+                    inputs.map(input => input.get()));
     }
 
     findNodeForUser(userid: string): DSPNode
     {
-        return <DSPNode> this.server.nodes()
+        return <DSPNode>this.server.nodes()
             .filter(node => node.type() == NODE_TYPE.DSP_NODE)
             .find((dspnode: DSPNode) => dspnode.users.findUserForId(userid)
                                         != null);
@@ -455,14 +458,17 @@ export class UsersManager extends ServerModule {
                         if (nodein) {
                             let user = node.users.findUserForId(data.userid);
                             if (user)
-                                node.users.addInputToUser(user.get().id, nodein);
+                                node.users.addInputToUser(
+                                    user.get().id, nodein);
                             else
-                                this.webif.error(`User ${data.userid} not found`);
+                                this.webif.error(
+                                    `User ${data.userid} not found`);
                         }
                         else
                             this.webif.error(`Input ${input.name} not found`);
-                    } catch (err) {
-                        log.error("Could not assign new input " + err);
+                    }
+                    catch (err) {
+                        log.error('Could not assign new input ' + err);
                     }
                 });
                 node.users.publishUserInputs(data.userid);
@@ -502,12 +508,33 @@ export class UsersManager extends ServerModule {
             });
 
         this.handleWebInterfaceEvent(
-            'user.headtracker', (socket: SocketIO.Socket, node: DSPNode,
-                                 data: UserAssignHeadtrackerMessage) => {
-                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
-                                  GraphBuilderInputEvents.ASSIGN_HEADTRACKER,
-                                  data.userid, data.headtrackerid);
-            });
+                'user.input.heigth',
+                (socket: SocketIO.Socket, node: DSPNode,
+                 data: UserPanInputMessage) => {
+                    this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                      GraphBuilderInputEvents.HEIGHT,
+                                      data.userid, data.spid, data.value);
+                })
+
+            this.handleWebInterfaceEvent(
+                    'user.input.width',
+                    (socket: SocketIO.Socket, node: DSPNode,
+                     data: UserPanInputMessage) => {
+                        this.emitToModule(node.id(),
+                                          DSPModuleNames.GRAPH_BUILDER,
+                                          GraphBuilderInputEvents.WIDTH,
+                                          data.userid, data.spid, data.value);
+                    })
+
+                this.handleWebInterfaceEvent(
+                    'user.headtracker',
+                    (socket: SocketIO.Socket, node: DSPNode,
+                     data: UserAssignHeadtrackerMessage) => {
+                        this.emitToModule(
+                            node.id(), DSPModuleNames.GRAPH_BUILDER,
+                            GraphBuilderInputEvents.ASSIGN_HEADTRACKER,
+                            data.userid, data.headtrackerid);
+                    });
 
         this.handleWebInterfaceEvent(
             'user.modify',
@@ -515,24 +542,33 @@ export class UsersManager extends ServerModule {
                 node.users.modifyUser(data);
             });
 
-        this.handleGlobalWebInterfaceEvent('setgain', (socket: SocketIO.Socket, data: UserInputGainChangeMessage) => {
-            let node = this.findNodeForUser(data.user);
-            if(node)
-                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.SET_GAIN, data.user, data.id, data.gain);
-            else
-                log.error("Could not find node for user " + data.user);
-        });
+        this.handleGlobalWebInterfaceEvent(
+            'setgain',
+            (socket: SocketIO.Socket, data: UserInputGainChangeMessage) => {
+                let node = this.findNodeForUser(data.user);
+                if (node)
+                    this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                      GraphBuilderInputEvents.SET_GAIN,
+                                      data.user, data.id, data.gain);
+                else
+                    log.error('Could not find node for user ' + data.user);
+            });
 
-        this.handleGlobalWebInterfaceEvent('changegain', (socket: SocketIO.Socket, data: UserInputGainChangeMessage) => {
-            let node = this.findNodeForUser(data.user);
-            if(node){
-                let input = node.users.findInputById(data.id);
-                let idata = input.get();
-                idata.gain = data.gain;
-                input.set(idata).then(() => input.save()).catch(err => { log.error(`Could not set new gain: ${err}`) });
-            }
-            else
-                log.error("Could not find node for user " + data.user);
-        });
+        this.handleGlobalWebInterfaceEvent(
+            'changegain',
+            (socket: SocketIO.Socket, data: UserInputGainChangeMessage) => {
+                let node = this.findNodeForUser(data.user);
+                if (node) {
+                    let input  = node.users.findInputById(data.id);
+                    let idata  = input.get();
+                    idata.gain = data.gain;
+                    input.set(idata)
+                        .then(() => input.save())
+                        .catch(err => { log.error(
+                                   `Could not set new gain: ${err}`) });
+                }
+                else
+                    log.error('Could not find node for user ' + data.user);
+            });
     }
 }

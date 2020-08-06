@@ -16,6 +16,8 @@ export const GraphBuilderInputEvents = {
     PAN: 'pan',
     AZM: 'azm',
     ELV: 'elv',
+    HEIGHT: 'height',
+    WIDTH: 'width',
     GAIN: 'gain',
     ROOM_ENABLED: 'roomenabled',
     ROOM_REFLECTIONS: 'roomreflections',
@@ -65,6 +67,8 @@ export class NodeDSPGraphBuilder extends NodeModule {
         this.handleModuleEvent(GraphBuilderInputEvents.PAN, this._dispatch_pan.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.AZM, this._dispatch_azimuth_pan.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ELV, this._dispatch_elevation_pan.bind(this));
+        this.handleModuleEvent(GraphBuilderInputEvents.HEIGHT, this._dispatch_height_pan.bind(this));
+        this.handleModuleEvent(GraphBuilderInputEvents.WIDTH, this._dispatch_width_pan.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_ENABLED, this._dispatch_room_enabled.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_REFLECTIONS, this._dispatch_room_reflections.bind(this));
         this.handleModuleEvent(GraphBuilderInputEvents.ROOM_ATTN, this._dispatch_room_attn.bind(this));
@@ -161,6 +165,26 @@ export class NodeDSPGraphBuilder extends NodeModule {
         let module = this._find_spatializer(userid, spid);
         if(module)
             module.setElevation(elv);
+        else {
+            log.error(`Could not find spatializer for input user ${userid} input ${spid}`);
+        }
+    }
+
+    _dispatch_width_pan(userid: string, spid: string, width: number)
+    {
+        let module = this._find_spatializer(userid, spid);
+        if(module)
+            module.setWidth(width);
+        else {
+            log.error(`Could not find spatializer for input user ${userid} input ${spid}`);
+        }
+    }
+
+    _dispatch_height_pan(userid: string, spid: string, height: number)
+    {
+        let module = this._find_spatializer(userid, spid);
+        if(module)
+            module.setHeight(height);
         else {
             log.error(`Could not find spatializer for input user ${userid} input ${spid}`);
         }

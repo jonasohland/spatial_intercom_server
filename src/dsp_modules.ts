@@ -234,6 +234,8 @@ export abstract class SpatializationModule extends Module {
     abstract pan(params: SourceParameterSet) : void;
     abstract setAzimuth(a: number): void;
     abstract setElevation(e: number): void;
+    abstract setHeight(h: number): void;
+    abstract setWidth(w: number): void;
     abstract setGain(gain: number): void; 
     abstract userId(): string;
     abstract outputBuses(graph: Graph): Bus[];
@@ -622,7 +624,18 @@ export class RoomSpatializerModule extends SpatializationModule {
             this._gain_node.setGain(gain);
         else
             this._encoders.forEach(enc => enc.setGain(gain));
+    }    
+    
+    setHeight(h: number): void {
+        this._cached_params.height = h;
+        this.pan(this._cached_params);
     }
+
+    setWidth(w: number): void {
+        this._cached_params.width = w;
+        this.pan(this._cached_params);
+    }
+
 
     setRoomData(room: RoomData)
     {
@@ -769,6 +782,16 @@ export class MultiSpatializerModule extends SpatializationModule {
             this._spatializer_node.setGain(this._cached_gain);
         else if(this._gain_node)
             this._gain_node.setGain(this._cached_gain);
+    }
+
+    setHeight(h: number): void {
+        this._params_cached.height = h;
+        this.pan(this._params_cached);
+    }
+
+    setWidth(w: number): void {
+        this._params_cached.width = w;
+        this.pan(this._params_cached);
     }
 
     input(graph: Graph): Bus
