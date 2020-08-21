@@ -326,7 +326,7 @@ export class DSPGraphController extends ServerModule {
     init()
     {
         this.handleGlobalWebInterfaceEvent('committodsp', (socket: SocketIO.Socket, data) => {
-            this.server.nodes().forEach(node => {
+            this.server.nodes(NODE_TYPE.DSP_NODE).forEach(node => {
                 if(node.type() == NODE_TYPE.DSP_NODE) {
                     log.info("Rebuild graph on node " + node.name());
                     this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER, GraphBuilderInputEvents.FULL_REBUILD);

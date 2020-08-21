@@ -430,7 +430,7 @@ export class UsersManager extends ServerModule {
 
     findNodeForUser(userid: string): DSPNode
     {
-        return <DSPNode>this.server.nodes()
+        return <DSPNode>this.server.nodes(NODE_TYPE.DSP_NODE)
             .filter(node => node.type() == NODE_TYPE.DSP_NODE)
             .find((dspnode: DSPNode) => dspnode.users.findUserForId(userid)
                                         != null);

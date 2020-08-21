@@ -3,7 +3,7 @@ import node_mode from './node_mode';
 import server_mode from './server_mode';
 import headtracker_mode from './headtracker_mode';
 import htrk_bridge_mode from './headtracker_bridge_mode';
-import install_service from './install_service';
+import rrcs_node_mode from './rrcs_node_mode';
 
 const program = new commander.Command();
 
@@ -65,7 +65,15 @@ program.command('htrk-bridge [serialport]')
 .option('-s, --slow-start')
 .action(htrk_bridge_mode);  
 
-program.command('install-service')
-.action(install_service);
+program.command('rrcs')
+.option('-r, --rrcs <host>', 'hostname or ip address of the rrcs gateway')
+.option('--rrcs-osc-host <host>', 'where to send osc messages translated from string sent to rrcs (default: 127.0.0.1)')
+.option('--rrcs-osc-port <port>', '(default: 9955)')
+.option('-i, --interface <interface>', 'use this network interface')
+.option('-p, --port <port>')
+.option('-n, --node-name <node name>')
+.option('-R, --reset', 'reset this node before starting')
+.option('-c, --config <config_file>', 'load this config file instead of the default one')
+.action(rrcs_node_mode);
 
 program.parse(process.argv);

@@ -37,15 +37,16 @@ export function _log_msg(msg: Message, input: boolean, forward: boolean = true)
  * This Identifier is unique for for every machine.
  * @param name name of this node
  */
-function unique_node_id(name: string)
+function unique_node_id(name: string, type: NODE_TYPE)
 {
     let idstring = machineIdSync();
-    return createHash('sha1').update(`${idstring}-${name}`).digest('base64');
+    return NODE_TYPE[type] + '-' + createHash('sha1').update(`${idstring}-${name}`).digest('base64');
 }
 
 export enum NODE_TYPE {
     DSP_NODE,
-    HTRK_BRIDGE_NODE
+    HTRK_BRIDGE_NODE,
+    RRCS_NODE
 }
 
 export interface NodeIdentification {
@@ -458,7 +459,7 @@ export class SINodeWSClient {
     private _msg_interceptors: Record<string, NodeMessageInterceptor> = {};
     private _handler: NodeMessageHandler;
 
-    constructor(config: any, handler: NodeMessageHandler)
+    constructor(config: any, handler: NodeMessageHandler, type: NODE_TYPE)
     {
         this._handler = handler;
 
@@ -466,8 +467,8 @@ export class SINodeWSClient {
 
         this._id = {
             name : config.node_name,
-            id : unique_node_id(config.node_name),
-            type: NODE_TYPE.DSP_NODE
+            id : unique_node_id(config.node_name, type),
+            type: type
         };
 
         log.info(`Browsing for si-servers on ${defaultIF(config.interface)}`);

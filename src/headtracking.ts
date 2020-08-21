@@ -11,9 +11,8 @@ import { Headtracker,
         HeadtrackerNetworkFlags, 
         HeadtrackerNetworkSettings, 
         HeadtrackerStateFlags, 
-        HeadtrackerConfigPacket} from './headtracker'
-
-import { ShowfileTarget, Showfile, ShowfileManager } from './showfiles';
+        HeadtrackerConfigPacket} from './headtracker';
+        
 import WebInterface from './web_interface';
 import { ServerModule } from './core';
 

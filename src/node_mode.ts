@@ -1,13 +1,8 @@
-import * as mdns from 'dnssd'
-import * as mid from 'node-machine-id'
 import * as os from 'os';
-import io from 'socket.io-client'
-import { SINodeWSClient } from './communication'
-import * as discovery from './discovery'
+import { SINodeWSClient, NODE_TYPE } from './communication'
 import * as IPC from './ipc'
 import * as server_config from './server_config'
 import { LocalNodeController } from './dsp_process';
-import { log } from 'winston';
 import { NodeDataStorage } from './core';
 
 const local_addresses = <string[]>[];
@@ -25,16 +20,15 @@ Object.keys(ifaces).forEach(function(ifname) {
 
 export default function(options: any)
 {
-    server_config.loadServerConfigFile(options.config);
+    const type = NODE_TYPE.DSP_NODE;
 
+    server_config.loadServerConfigFile(options.config);
     const config  = server_config.merge(options);
 
-    console.log(config);
-
     const ipc = new IPC.IPCServer();
-    const wsclient = new SINodeWSClient(config, ipc);
+    const wsclient = new SINodeWSClient(config, ipc, type);
     const dspp = new LocalNodeController(config, ipc);
-    const state = new NodeDataStorage(config, options);
+    const state = new NodeDataStorage(config, options, type);
     wsclient.addWSInterceptor(dspp);
     wsclient.addWSInterceptor(state);
 }

@@ -19,6 +19,7 @@ import * as Logger from './log';
 import {ignore} from './util';
 import WebInterface from './web_interface';
 import { lowerFirst } from 'lodash';
+import { DSPNode } from './dsp_node';
 
 const log = Logger.get('NSTATE');
 
@@ -740,11 +741,12 @@ export class NodeDataStorage extends NodeMessageInterceptor {
     _saving: boolean     = false;
     _save_again: boolean = false
 
-    constructor(config: any, options: any)
+    constructor(config: any, options: any, type: NODE_TYPE)
     {
         super();
         this._local_file = configFileDir('nodestate/')
                            + safe_filename(config.node_name || 'default_node')
+                           + '.' + NODE_TYPE[type]
                            + '.json';
         if (!fs.existsSync(configFileDir('nodestate')))
             fs.mkdirSync(configFileDir('nodestate'));
@@ -1242,13 +1244,13 @@ export abstract class ServerModule extends Publisher {
 
     getNode(id: string)
     {
-        return this.server._nodes[id];
+        return this.server._nds[id];
     }
 
     handleWebInterfaceEvent(event: string, handler: WEBIFNodeEventHandler)
     {
         this.webif.attachHandler(this, this._name, event, (socket: SocketIO.Socket, nodeid: string, data: any) => {
-            let node = this.server._nodes[nodeid];
+            let node = this.server._nds[nodeid];
             if(!node) {
                 log.error(`Node not found for message -${this._name}.${event} - node: ${nodeid}`);
                 socket.emit('showerror', `Node not found for id ${nodeid}`);
@@ -1278,26 +1280,27 @@ export abstract class ServerModule extends Publisher {
 export class ServerInternalsModule extends ServerModule {
 
     joined(socket: SocketIO.Socket, topic: string)
-    {   
-        socket.emit('server.nodes', this.nodeIdList());
+    {
+        socket.emit('server.nodes.' + topic, this.nodeIdList(NODE_TYPE[topic as keyof typeof NODE_TYPE]));
     }   
 
     left(socket: SocketIO.Socket, topic: string)
     {
     }
 
-    nodesChanged()
+    nodesChanged(type: NODE_TYPE)
     {
-        this.publish('nodes', 'server.nodes', this.nodeIdList());
+        this.publish(NODE_TYPE[type], 'server.nodes.' + NODE_TYPE[type], this.nodeIdList(type));
     }
     
-    nodeIdList()
+    nodeIdList(type: NODE_TYPE)
     {
-        let ids = Object.keys(this.server._nodes);
-        let out: NodeIdentification[] = [];
-        for(let id of ids)
-            out.push(this.server._nodes[id]._id);
-        return out;
+        return this.server.nodes(type).map(n => n._id);
+    }
+
+    allNodeIds()
+    {
+        this.server.allNodes().map(n => n.id());
     }
 
     init() {
@@ -1312,7 +1315,7 @@ export class ServerInternalsModule extends ServerModule {
 export abstract class Server  {
 
     _srv: SIServerWSServer
-    _nodes: Record<string, Node> = {};
+    _nds: Record<string, Node> = {};
     _modules: Record<string, ServerModule> = {};
     _webif: WebInterface;
     _event_bus: EventEmitter2;
@@ -1347,12 +1350,23 @@ export abstract class Server  {
         this._event_bus.emit(`${node}.${event}`, ...data);
     }
 
-    nodes()
+    nodes(type: NODE_TYPE)
     {
-        let nodeids = Object.keys(this._nodes);
+        let nodeids = Object.keys(this._nds);
         let out = [];
-        for(let id of nodeids)
-            out.push(this._nodes[id]);
+        for(let id of nodeids) {
+            if(this._nds[id].type() == type)
+                out.push(this._nds[id]);
+        }
+
+        return out;
+    }
+
+    allNodes() {
+        let nodeids = Object.keys(this._nds);
+        let out = [];
+        for(let id of nodeids) 
+            out.push(this._nds[id]);
 
         return out;
     }
@@ -1364,21 +1378,21 @@ export abstract class Server  {
         let node               = this.createNode(session.id());
 
         node._init(session, this._event_bus, this).then(() => {
-            this._nodes[node.id()] = node;
-            this._internals.nodesChanged();
+            this._nds[node.id()] = node;
+            this._internals.nodesChanged(session.id().type);
         });
     }
 
     _on_remove_remote(session: SIServerWSSession)
     {
-        let node = this._nodes[session.id().id];
+        let node = this._nds[session.id().id];
         if (node) {
             log.info(`Destroy node instance for [${
                 NODE_TYPE[session.id().type]}] ${session.id().name}`);
             node._destroy();
             this.destroyNode(node);
-            delete this._nodes[session.id().id];
-            this._internals.nodesChanged();
+            delete this._nds[session.id().id];
+            this._internals.nodesChanged(session.id().type);
         }
     }
 
@@ -1412,9 +1426,9 @@ export abstract class Server  {
 
     _notify_join_node_room(socket: SocketIO.Socket, nodeid: string, module: string, topic: string)
     {
-        if(this._nodes[nodeid]) {
-            if(this._nodes[nodeid]._modules[module])
-                this._nodes[nodeid]._modules[module].joined(socket, topic);
+        if(this._nds[nodeid]) {
+            if(this._nds[nodeid]._modules[module])
+                this._nds[nodeid]._modules[module].joined(socket, topic);
             else
                 log.warn(`Node module '${module}' not found. Could not deliver join notification`);
         } 
@@ -1432,9 +1446,9 @@ export abstract class Server  {
 
     _notify_leave_node_room(socket: SocketIO.Socket, nodeid: string, module: string, topic: string)
     {
-        if(this._nodes[nodeid]) {
-            if(this._nodes[nodeid]._modules[module])
-                this._nodes[nodeid]._modules[module].left(socket, topic);
+        if(this._nds[nodeid]) {
+            if(this._nds[nodeid]._modules[module])
+                this._nds[nodeid]._modules[module].left(socket, topic);
             else
                 log.warn(`Node module '${module}' not found. Could not deliver leave notification`);
         } 

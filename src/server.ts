@@ -1,21 +1,16 @@
-import express from 'express';
-import * as fs from 'fs';
 import { AudioDevices } from './audio_devices'
-import {SIServerWSServer, SIServerWSSession, NodeIdentification, NODE_TYPE} from './communication';
-import {DSPController} from './dsp_process';
+import {SIServerWSServer, NodeIdentification, NODE_TYPE} from './communication';
 import {Headtracking} from './headtracking'
 import { AudioInputsManager } from './inputs';
 import {SIDSPNode} from './instance';
 import * as Logger from './log'
-import {ShowfileManager, ShowfileTarget} from './showfiles';
-import * as tc from './timecode';
 import WebInterface from './web_interface';
-import { StateUpdateStrategy, Server, Node } from './core';
+import { Server, Node } from './core';
 import { DSPNode } from './dsp_node';
 import { UsersManager } from './users';
 import { Rooms } from './rooms';
 import { DSPGraphController } from './dsp_graph_builder';
-import { RRCSModule } from './rrcs';
+import { RRCSNode, RRCSServerModule } from './rrcs_node';
 
 const log = Logger.get('SERVER');
 
@@ -26,8 +21,12 @@ export interface SocketAndInstance {
 export class SpatialIntercomServer extends Server {
 
     createNode(id: NodeIdentification): Node {
-        if(id.type == NODE_TYPE.DSP_NODE)
-            return new DSPNode(id);
+        switch (id.type) {
+            case NODE_TYPE.DSP_NODE:
+                return new DSPNode(id);
+            case NODE_TYPE.RRCS_NODE:
+                return new RRCSNode(id);
+        }
     }
 
     destroyNode(node: Node): void {
@@ -40,7 +39,7 @@ export class SpatialIntercomServer extends Server {
     rooms: Rooms;
     headtracking: Headtracking;
     graphcontroller: DSPGraphController;
-    rrcs: RRCSModule;
+    rrcs: RRCSServerModule;
 
     constructor(config: any)
     {
@@ -54,7 +53,6 @@ export class SpatialIntercomServer extends Server {
             htrk.setStreamDest("192.168.178.99", 4009);
         });
 
-        this.rrcs = new RRCSModule(config);
         this.webif = webif;
         this.audio_devices = new AudioDevices();
         this.inputs = new AudioInputsManager();
@@ -62,7 +60,7 @@ export class SpatialIntercomServer extends Server {
         this.rooms = new Rooms();
         this.headtracking = new Headtracking(this.webif);
         this.graphcontroller = new DSPGraphController();
-        this.add(this.rrcs);
+        this.rrcs = new RRCSServerModule();
         this.add(this.webif);
         this.add(this.audio_devices);
         this.add(this.inputs);
@@ -70,5 +68,6 @@ export class SpatialIntercomServer extends Server {
         this.add(this.rooms);
         this.add(this.headtracking);
         this.add(this.graphcontroller);
+        this.add(this.rrcs);
     }
 }

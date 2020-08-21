@@ -1,7 +1,8 @@
 import {EventEmitter} from 'events';
+import graphviz, { graph } from 'graphviz';
 
 import * as COM from './communication';
-import { PortTypes, stringToPortType, SourceUtils} from './dsp_defs'
+import {PortTypes, SourceUtils, stringToPortType} from './dsp_defs'
 import * as Logger from './log';
 import {VSTScanner} from './vst';
 
@@ -118,7 +119,7 @@ export class Bus {
         this.type = type;
     }
 
-    addPort(port: Port) 
+    addPort(port: Port)
     {
         this.ports.push(port);
     }
@@ -144,17 +145,22 @@ export class Bus {
 
     connect(other: Bus)
     {
-        return this.connectIdxNIdx(other, 0, this.portCountForChannels(other.channelCount()), 0);
+        return this.connectIdxNIdx(
+            other, 0, this.portCountForChannels(other.channelCount()), 0);
     }
 
     connectIdx(other: Bus, thisIndex: number)
     {
-        return this.connectIdxNIdx(other, thisIndex, this.portCountForChannels(other.channelCount()), 0);
+        return this.connectIdxNIdx(
+            other, thisIndex, this.portCountForChannels(other.channelCount()),
+            0);
     }
 
     connectOtherIdx(other: Bus, otherIndex: number)
     {
-        return this.connectIdxNIdx(other, 0, this.portCountForChannels(other.channelCount()), otherIndex);
+        return this.connectIdxNIdx(
+            other, 0, this.portCountForChannels(other.channelCount()),
+            otherIndex);
     }
 
     connectIdxN(other: Bus, thisIndex: number, thisCount: number)
@@ -164,7 +170,9 @@ export class Bus {
 
     connectIdxIdx(other: Bus, thisIndex: number, otherIndex: number)
     {
-        return this.connectIdxNIdx(other, thisIndex, this.portCountForChannels(other.channelCount()), otherIndex);
+        return this.connectIdxNIdx(
+            other, thisIndex, this.portCountForChannels(other.channelCount()),
+            otherIndex);
     }
 
     connectIdxNIdx(other: Bus, thisIndex: number, thisCount: number,
@@ -260,13 +268,14 @@ export class Bus {
         return Bus.createMain(count, PortTypes.Stereo);
     }
 
-    static join(name: string, ...buses: Bus[]) {
-        let ty = buses[0].type;
+    static join(name: string, ...buses: Bus[])
+    {
+        let ty     = buses[0].type;
         let newbus = new Bus(name, ty);
 
         buses.forEach(bus => {
-            if(bus.type != ty)
-                throw "Type mismatch while joining busses";
+            if (bus.type != ty)
+                throw 'Type mismatch while joining busses';
             bus.ports.forEach(port => newbus.addPort(port));
         });
     }
@@ -467,7 +476,7 @@ export abstract class NativeNode extends Node {
 
     destroy()
     {
-        log.info("Destroy native node " + this.native_event_name);
+        log.info('Destroy native node ' + this.native_event_name);
         this.remote.removeAllListeners('alive');
         this.remote.removeAllListeners('preapred');
         this.remote.destroy();
@@ -547,7 +556,7 @@ export class Graph {
 
         if (rmv_node) {
             rmv_node._unset_nodeid(true);
-            if(rmv_node instanceof NativeNode)
+            if (rmv_node instanceof NativeNode)
                 rmv_node.destroy();
         }
 
@@ -656,15 +665,48 @@ export class Graph {
             }),
             connections : this.connections
         };
+        this.visualize();
         return out;
     }
 
-    clear() 
+    graphvizlabel(thing: any) {
+        return `${thing}`;
+    }
+
+    visualize()
+    {
+        let g = graphviz.digraph('dspgraph');
+
+        let inpid = this.getInputNode().id;
+        let outpid = this.getOutputNode().id;
+
+        this.nodes.forEach(nd =>  { 
+        
+            if(nd.id == inpid || nd.id == outpid)
+                g.addNode('' + nd.id, { label : nd.name, shape: "rect", width: 5 })
+            else
+                g.addNode('' + nd.id, { label : nd.name, shape: "rect" });
+        });
+
+        this.connections.forEach(connection => {
+            connection.sources.forEach((source, idx) => {
+                g.addEdge('' + source.n, '' + connection.destinations[0].n, {
+                    label : source.c,
+                    headlabel : this.graphvizlabel(connection.destinations[0].ni),
+                    taillabel :   this.graphvizlabel(source.ni),
+                });
+            });
+        });
+
+        return g.to_dot();
+    }
+
+    clear()
     {
         [...this.modules].forEach(module => this.removeModule(module));
-        this.modules = [];
-        this.node_count = 1;
-        this.nodes = [];
+        this.modules     = [];
+        this.node_count  = 1;
+        this.nodes       = [];
         this.connections = [];
     }
 }
