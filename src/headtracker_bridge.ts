@@ -1,5 +1,5 @@
 import dgram, {RemoteInfo} from 'dgram';
-import * as dnssd from 'dnssd';
+import mdns from 'mdns';
 import {EventEmitter} from 'events';
 import express from 'express';
 import {AddressInfo} from 'net';
@@ -61,7 +61,7 @@ export class HeadtrackerBridgeDevice extends EventEmitter {
 
     path: string;
 
-    _adv: dnssd.Advertisement;
+    _adv: mdns.Advertisement;
     _sock: dgram.Socket;
 
     conf: HeadtrackerConfigPacket;
@@ -122,7 +122,7 @@ export class HeadtrackerBridgeDevice extends EventEmitter {
         log.info('Headtracker ready. Adding new mdns advertisement: _htrk._udp.'
                  + sname);
 
-        this._adv = new dnssd.Advertisement(dnssd.udp('_htrk'),
+        this._adv = new mdns.Advertisement(mdns.udp('_htrk'),
                                             this._sock.address().port,
                                             { host : sname, name : sname });
 
@@ -249,9 +249,7 @@ export class HeadtrackerBridgeDevice extends EventEmitter {
         this._sock.close();
 
         if (this._adv)
-            this._adv.stop(false, () => {
-                log.info('Advertisement for ' + this.path + ' removed');
-            });
+            this._adv.stop();
 
         this.lhtrk.destroy().catch((err) => {
             log.warn('Could not close port: ' + err);

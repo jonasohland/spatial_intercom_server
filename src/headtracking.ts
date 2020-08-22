@@ -1,5 +1,5 @@
 import {createSocket as createDgramSocket, Socket} from 'dgram';
-import dnssd from 'dnssd';
+import dnssd from 'mdns';
 import EventEmitter from 'events';
 import * as Logger from './log';
 
@@ -102,13 +102,13 @@ export class Headtracking extends ServerModule {
         this.webif          = interf;
 
         this.browser = new dnssd.Browser(dnssd.udp('_htrk'), {
-            interface : netif,
+            networkInterface : netif,
         });
 
         this.browser.on('serviceUp', this.serviceFound.bind(this));
         this.browser.on('serviceDown', this.serviceRemoved.bind(this));
 
-        this.browser.on('error', err => log.error(`MDNS-SD brower [Headtracking] error ${err}`));
+        this.browser.on('error', (err: any) => log.error(`MDNS-SD brower [Headtracking] error ${err}`));
 
         this.browser.start();
 
