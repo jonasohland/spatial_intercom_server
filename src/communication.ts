@@ -1,5 +1,5 @@
 import {createHash} from 'crypto';
-import * as mdns from 'dnssd';
+import * as mdns from 'mdns';
 import {EventEmitter} from 'events';
 import * as http from 'http';
 import {machineIdSync} from 'node-machine-id';

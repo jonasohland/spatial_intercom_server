@@ -12,7 +12,7 @@ import { Headtracker,
         HeadtrackerNetworkSettings, 
         HeadtrackerStateFlags, 
         HeadtrackerConfigPacket} from './headtracker';
-        
+
 import WebInterface from './web_interface';
 import { ServerModule } from './core';
 
@@ -107,6 +107,8 @@ export class Headtracking extends ServerModule {
 
         this.browser.on('serviceUp', this.serviceFound.bind(this));
         this.browser.on('serviceDown', this.serviceRemoved.bind(this));
+
+        this.browser.on('error', err => log.error(`MDNS-SD brower [Headtracking] error ${err}`));
 
         this.browser.start();
 

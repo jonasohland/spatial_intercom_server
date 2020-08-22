@@ -1,8 +1,5 @@
-
 import {EventEmitter2} from 'eventemitter2';
 import * as fs from 'fs';
-import {first} from 'lodash';
-import {PortInfo} from 'serialport';
 import xmlrpc from 'xmlrpc';
 
 import {configFileDir} from './files';

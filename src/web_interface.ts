@@ -1,5 +1,5 @@
 import history from 'connect-history-api-fallback';
-import {Advertisement} from 'dnssd';
+import {Advertisement} from 'mdns';
 import express from 'express';
 import * as http from 'http';
 import _ from 'lodash';
