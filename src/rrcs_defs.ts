@@ -1,3 +1,6 @@
+import {lchmodSync} from 'fs';
+import _ from 'lodash';
+
 export interface Port {
     Node: number, Port: number, IsInput: boolean
 }
@@ -22,6 +25,14 @@ export interface CrosspointVolumeTarget {
     xp: Crosspoint, conf: boolean, single: boolean, set: boolean
 }
 
+export interface AddCrosspointVolumeTargetMessage {
+    masterid: string, slave: CrosspointVolumeTarget
+}
+
+export interface XPSyncModifySlavesMessage {
+    master: string, slaves: CrosspointVolumeTarget[]
+}
+
 export interface CrosspointSync {
     state: boolean;
     vol: number;
@@ -29,11 +40,23 @@ export interface CrosspointSync {
     slaves: CrosspointVolumeTarget[];
 }
 
+export function isLoopbackXP(xp: Crosspoint)
+{
+    return xp.Source.Port === xp.Destination.Port
+           && xp.Source.Node === xp.Destination.Node
+           && xp.Source.IsInput != xp.Destination.IsInput;
+}
+
+export function portEqual(lhs: Port, rhs: Port)
+{
+    return lhs.Node === rhs.Node && lhs.Port === rhs.Port
+           && lhs.IsInput === rhs.IsInput;
+}
+
 export function xpEqual(lhs: Crosspoint, rhs: Crosspoint)
 {
-    return lhs.Source.Port == lhs.Destination.Port
-           && lhs.Source.Node == lhs.Destination.Node
-           && lhs.Source.IsInput == lhs.Destination.IsInput;
+    return portEqual(lhs.Source, rhs.Source)
+           && portEqual(lhs.Destination, rhs.Destination);
 }
 
 export function xpVtEqual(
@@ -45,12 +68,70 @@ export function xpVtEqual(
 
 export function __xpid(xp: Crosspoint)
 {
-    return `${xp.Source.Node}-${xp.Source.Port}-${
-        xp.Source.IsInput ? 'i' : 'o'}|${xp.Destination.Node}-${
-        xp.Destination.Port}-${xp.Destination.IsInput ? 'i' : 'o'}`
+    return `${xp.Source.Node}-${xp.Source.Port}-|${xp.Destination.Node}-${
+        xp.Destination.Port}`
 }
 
 export function xpvtid(xp_vt: CrosspointVolumeSource)
 {
-    return __xpid(xp_vt.xp) + (xp_vt.conf ? '-conf' : '-single');
+    if (isWildcardXP(xp_vt.xp))
+        return `${__xpid(xp_vt.xp)}|*`;
+    return `${__xpid(xp_vt.xp)}${xp_vt.conf ? '|c' : '|s'}`;
+}
+
+export function makeWildcardPort(): Port
+{
+    return { Node : -1, Port : -1, IsInput : null };
+}
+
+export function isWildcardPort(port: Port)
+{
+    return port.Node == -1 || port.Port == -1;
+}
+
+export function isWildcardXP(xp: Crosspoint)
+{
+    return isWildcardPort(xp.Source) || isWildcardPort(xp.Destination);
+}
+
+export function destinationPortIsWildcard(xp: Crosspoint)
+{
+    return isWildcardPort(xp.Destination);
+}
+
+export function sourcePortIsWildcard(xp: Crosspoint)
+{
+    return isWildcardPort(xp.Source);
+}
+
+export function withSourceAsSourceWildcard(xp: Crosspoint): Crosspoint
+{
+    return {
+        Source : makeWildcardPort(),
+        Destination : _.cloneDeep(xp.Source)
+    };
+}
+
+export function withSourceAsDestinationWildcard(xp: Crosspoint): Crosspoint
+{
+    return {
+        Source : _.cloneDeep(xp.Source),
+        Destination : makeWildcardPort()
+    };
+}
+
+export function withDestinationeAsSourceWildcard(xp: Crosspoint): Crosspoint
+{
+    return {
+        Source : makeWildcardPort(),
+        Destination : _.cloneDeep(xp.Destination)
+    };
+}
+
+export function withDestinationAsDestinationWildcard(xp: Crosspoint): Crosspoint
+{
+    return {
+        Source : _.cloneDeep(xp.Destination),
+        Destination : makeWildcardPort()
+    };
 }

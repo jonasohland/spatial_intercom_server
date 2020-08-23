@@ -2,7 +2,7 @@ import { SINodeWSClient, NodeMessageHandler, NODE_TYPE, NodeMessageInterceptor, 
 import { NodeDataStorage } from './core'
 import * as server_config from './server_config';
 import { RRCSService } from "./rrcs";
-import { CrosspointSync } from './rrcs_defs';
+import { CrosspointSync, XPSyncModifySlavesMessage } from './rrcs_defs';
 
 class DummyMessageHandler extends NodeMessageHandler {
     send(msg: string): boolean {
@@ -41,7 +41,10 @@ class RRCSMessageInterceptor extends NodeMessageInterceptor {
                 let syncs = <CrosspointSync[]> <any> msg.data;
                 this.rrcs.setXPSyncs(syncs);
             }
-            case 'get-states': {
+            case 'xp-sync-add-slaves': {
+                this.rrcs.xpSyncAddSlaves(<XPSyncModifySlavesMessage> msg.data);
+            }
+            case 'xp-sync-remove-slaves': {
 
             }
         }

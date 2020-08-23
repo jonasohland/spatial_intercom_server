@@ -4,7 +4,28 @@ import xmlrpc from 'xmlrpc';
 
 import {configFileDir} from './files';
 import * as Logger from './log';
-import { Crosspoint, CrosspointSync, CrosspointVolumeSourceState, xpvtid, CrosspointState, CrosspointVolumeTarget, __xpid, xpVtEqual, CrosspointVolumeSource } from './rrcs_defs';
+import {
+    __xpid,
+    Crosspoint,
+    CrosspointState,
+    CrosspointSync,
+    CrosspointVolumeSource,
+    CrosspointVolumeSourceState,
+    CrosspointVolumeTarget,
+    destinationPortIsWildcard,
+    isLoopbackXP,
+    isWildcardXP,
+    portEqual,
+    sourcePortIsWildcard,
+    withDestinationAsDestinationWildcard,
+    withDestinationeAsSourceWildcard,
+    withSourceAsDestinationWildcard,
+    withSourceAsSourceWildcard,
+    xpEqual,
+    XPSyncModifySlavesMessage,
+    xpVtEqual,
+    xpvtid
+} from './rrcs_defs';
 
 const log    = Logger.get('RRCSSV');
 const artlog = Logger.get('ARTIST');
@@ -109,7 +130,7 @@ class ArtistNode {
 function crosspointToParams(xp: Crosspoint, net: number)
 {
     return [
-        net, xp.Source.Node, xp.Source.Port, net, xp.Destination.Node,
+        net - 1, xp.Source.Node, xp.Source.Port, net - 1, xp.Destination.Node,
         xp.Destination.Port
     ];
 }
@@ -305,6 +326,21 @@ export abstract class RRCSServer extends EventEmitter2 {
         return out;
     }
 
+    async getXpsInRange(xp: Crosspoint)
+    {
+        let resp = <any>await this._perform_method_call(
+            'GetActiveXpsRange', this._get_trs_key(),
+            ...crosspointToParams(xp, 2));
+
+        let out = [];
+
+        for (let key of Object.keys(resp)) {
+            if (key.startsWith('XP#'))
+                out.push(crosspointFromParams(resp[key]))
+        }
+        return out;
+    }
+
     async setXP(xp: Crosspoint)
     {
         log.debug(`Set XP ${__xpid(xp)}`);
@@ -322,15 +358,17 @@ export abstract class RRCSServer extends EventEmitter2 {
     async _perform_method_call(method: string, ...params: any[])
     {
         logArtistCall(method, params.length);
-        return new Promise((res, rej) => { this._cl.methodCall(
-                               method, params, (err, value) => {
-                                   if (err)
-                                       rej(err);
-                                   else {
-                                       artlog.debug(`Call to ${method} returned with ${value.length} args`);
-                                       res(value);
-                                   }
-                               }) });
+        return new Promise(
+            (res,
+             rej) => { this._cl.methodCall(method, params, (err, value) => {
+                if (err)
+                    rej(err);
+                else {
+                    artlog.debug(
+                        `Call to ${method} returned with ${value.length} args`);
+                    res(value);
+                }
+            }) });
     }
 
     private async _modify_notifications(method: string, ...args: any[])
@@ -356,12 +394,17 @@ export abstract class RRCSServer extends EventEmitter2 {
 
     async addToXPVolNotifyRegistry(xps: Crosspoint[])
     {
-        return this._modify_notifications('XpVolumeChangeRegistryAdd', xps);
+        xps = xps.filter(xp => !isWildcardXP(xp));
+        if (xps.length)
+            return this._modify_notifications('XpVolumeChangeRegistryAdd', xps);
     }
 
     async removeFromXPVolNotifyRegistry(xps: Crosspoint[])
     {
-        return this._modify_notifications('XpVolumeChangeRegistryRemove', xps);
+        xps = xps.filter(xp => !isWildcardXP(xp));
+        if (xps.length)
+            return this._modify_notifications(
+                'XpVolumeChangeRegistryRemove', xps);
     }
 
     private _gateway_went_online()
@@ -535,6 +578,14 @@ export class RRCSService extends RRCSServer {
             })
     }
 
+    xpSyncAddSlaves(msg: XPSyncModifySlavesMessage)
+    {
+    }
+
+    xpSyncRemoveSlaves(msg: XPSyncModifySlavesMessage)
+    {
+    }
+
     newXPSync(master: CrosspointVolumeSource, slaves: CrosspointVolumeTarget[])
     {
         let id           = xpvtid(master);
@@ -584,9 +635,11 @@ export class RRCSService extends RRCSServer {
 
     async updateStateForCrosspointSync(sync: CrosspointSync)
     {
-        let state = await this.getXpStatus(sync.master.xp);
+        let state  = await this.getXpStatus(sync.master.xp);
         sync.state = state;
-        this.emit('xp-states-changed', [<CrosspointVolumeSourceState> { state, xpid: xpvtid(sync.master) }]);
+        this.emit('xp-states-changed', [
+            <CrosspointVolumeSourceState>{ state, xpid : xpvtid(sync.master) }
+        ]);
     }
 
     updateCrosspoint(xpv: CrosspointVolumeTarget, vol: number)
@@ -622,43 +675,156 @@ export class RRCSService extends RRCSServer {
         }
     }
 
-    onXpsChanged(xps: CrosspointState[])
+    async onXpsChanged(xps: CrosspointState[])
     {
-        let updated = <CrosspointVolumeSourceState[]> [];
+        let updated = <CrosspointVolumeSourceState[]>[];
         for (let xpstate of xps) {
-            let masterid_conf   = xpvtid({ xp : xpstate.xp, conf : false });
-            let masterid_single = xpvtid({ xp : xpstate.xp, conf : true });
 
-            if (this._synced[masterid_conf]){
-                this.syncCrosspointsForMaster(
-                    this._synced[masterid_conf], xpstate.state);
-                updated.push({ xpid: masterid_conf, state: xpstate.state });
-            }
+            // ignore the Sidetone/Loopback XP
+            if (isLoopbackXP(xpstate.xp))
+                continue;
 
-            if (this._synced[masterid_single]){
-                this.syncCrosspointsForMaster(
-                    this._synced[masterid_single], xpstate.state);
-                updated.push({ xpid: masterid_single, state: xpstate.state });
+            this.trySyncCrosspointForMaster(
+                xpvtid({ xp : xpstate.xp, conf : false }), xpstate, updated);
+            this.trySyncCrosspointForMaster(
+                xpvtid({ xp : xpstate.xp, conf : true }), xpstate, updated);
+
+            await this.trySyncCrosspointForWildcardMaster(
+                xpvtid({
+                    xp : withDestinationAsDestinationWildcard(xpstate.xp),
+                    conf : false
+                }),
+                xpstate, updated);
+
+            await this.trySyncCrosspointForWildcardMaster(
+                xpvtid({
+                    xp : withDestinationeAsSourceWildcard(xpstate.xp),
+                    conf : false
+                }),
+                xpstate, updated);
+
+            await this.trySyncCrosspointForWildcardMaster(
+                xpvtid({
+                    xp : withSourceAsDestinationWildcard(xpstate.xp),
+                    conf : false
+                }),
+                xpstate, updated);
+
+            await this.trySyncCrosspointForWildcardMaster(
+                xpvtid({
+                    xp : withSourceAsSourceWildcard(xpstate.xp),
+                    conf : false
+                }),
+                xpstate, updated);
+        }
+        if (updated.length) {
+            this.emit('xp-states-changed', updated);
+        }
+    }
+
+    trySyncCrosspointForMaster(masterid: string, xpstate: CrosspointState,
+                               updated: CrosspointVolumeSourceState[])
+    {
+        if (this._synced[masterid]) {
+            this.syncCrosspointsForMaster(
+                this._synced[masterid], xpstate.state);
+            updated.push({ xpid : masterid, state : xpstate.state });
+        }
+    }
+
+    async trySyncCrosspointForWildcardMaster(masterid: string,
+                                             xpstate: CrosspointState,
+                                             updated:
+                                                 CrosspointVolumeSourceState[])
+    {
+        try {
+            if (this._synced[masterid]) {
+                if (await this.syncCrosspointsForWildcardMaster(
+                        this._synced[masterid], xpstate.state)) {
+                    updated.push({
+                        xpid : masterid,
+                        state : this._synced[masterid].state
+                    });
+
+                    for (let slave of this._synced[masterid].slaves) {
+                        if (slave.set) {
+                            if (this._synced[masterid].state)
+                                await this._try_set_xp(slave.xp);
+                            else
+                                await this._try_kill_xp(slave.xp);
+                        }
+                    }
+                }
             }
         }
-        if(updated.length) {
-            this.emit('xp-states-changed', updated);
+        catch (err) {
+            log.error(`Failed to update wildcard master ${masterid}: ${err}`);
         }
     }
 
     async syncCrosspointsForMaster(sync: CrosspointSync, state: boolean)
     {
+        sync.state = state;
         for (let slave of sync.slaves) {
             if (slave.set) {
                 try {
                     if (state)
-                        await this.setXP(slave.xp)
-                        else await this.killXP(slave.xp);
+                        await this._try_set_xp(slave.xp);
+                    else
+                        await this._try_kill_xp(slave.xp);
                 }
                 catch (err) {
                     log.error('Could not set XP ' + err);
                 }
             }
+        }
+    }
+
+    async syncCrosspointsForWildcardMaster(sync: CrosspointSync,
+                                           newstate: boolean)
+    {
+        let wildcard_actives = <Crosspoint[]>[];
+
+        if (destinationPortIsWildcard(sync.master.xp)) {
+
+            let xps = await this.getXpsInRange({
+                Source : sync.master.xp.Source,
+                Destination : sync.master.xp.Source
+            });
+            wildcard_actives.push(
+                ...xps.filter(xp => portEqual(xp.Source, sync.master.xp.Source)
+                                    && !isLoopbackXP(xp)));
+        }
+
+        if (sourcePortIsWildcard(sync.master.xp)) {
+            let xps = await this.getXpsInRange({
+                Source : sync.master.xp.Destination,
+                Destination : sync.master.xp.Destination
+            });
+
+            wildcard_actives.push(...xps.filter(
+                xp => portEqual(xp.Destination, sync.master.xp.Destination)
+                      && !isLoopbackXP(xp)));
+        }
+
+        if (wildcard_actives.length) {
+            log.debug(`Wildcard master ${xpvtid(sync.master)} still has ${
+                wildcard_actives.length} XPs`);
+            if (!sync.state) {
+                sync.state = true;
+                return true;
+            }
+            return false;
+        }
+        else {
+            log.debug(
+                `Wildcard master ${xpvtid(sync.master)} has no more active XPs`)
+            if (sync.state)
+            {
+                sync.state = false;
+                return true;
+            }
+            return false;
         }
     }
 
@@ -679,10 +845,13 @@ export class RRCSService extends RRCSServer {
                 this._synced[confid].state = true;
         });
 
-        let syncstates = <CrosspointVolumeSourceState[]> []
+        let syncstates = <CrosspointVolumeSourceState[]>[];
         for (let key of Object.keys(this._synced))
-            syncstates.push({ xpid: xpvtid(this._synced[key].master), state: this._synced[key].state });
-        
+            syncstates.push({
+                xpid : xpvtid(this._synced[key].master),
+                state : this._synced[key].state
+            });
+
         this.emit('xp-states-changed', syncstates);
     }
 
@@ -704,70 +873,60 @@ export class RRCSService extends RRCSServer {
         for (let key of Object.keys(this._synced))
             this._synced[key].state = false;
     }
-}
 
-
-/*
-export class RRCSModule extends ServerModule {
-
-    rrcssrv: RRCSServerType;
-    local_sock: Socket;
-    config: any;
-
-    init()
+    private async _try_set_xp(xp: Crosspoint)
     {
-        this.handleGlobalWebInterfaceEvent('reconnect-rrcs', (socket, data) => {
-            log.info('Reconnect RRCS');
-            this.reconnectRRCS();
-        });
+        let isset = await this.getXpStatus(xp);
+        if (isset)
+            log.debug(`XP ${__xpid(xp)} already set`);
+        else
+            await this.setXP(xp);
     }
 
-    joined(socket: SocketIO.Socket)
+    private async _try_kill_xp(xp: Crosspoint)
     {
-    }
+        log.debug(`Try killing XP ${__xpid(xp)}`);
+        let still_set_by = <string[]>[];
 
-    left(socket: SocketIO.Socket)
-    {
-    }
+        for (let masterid of Object.keys(this._synced)) {
+            const sync  = this._synced[masterid];
+            let slfound = false;
 
-    constructor(config: any)
-    {
-        super('rrcs');
-        this.config = config;
+            if (!sync.state)
+                continue;
 
-        this.local_sock = createSocket('udp4', (msg, rinfo) => {
+            for (let slave of sync.slaves) {
+                if (!slave.set)
+                    continue;
 
-                                               });
-
-        this.local_sock.on('error', (err) => {
-            log.error('RRCS to OSC socket error: ' + err);
-        });
-
-        this.local_sock.on('close', () => {
-            log.warn('RRCS to OSC socket closed');
-        });
-        // this.reconnectRRCS();
-    }
-
-    reconnectRRCS()
-    {
-        if (this.config) {
-            if (this.rrcssrv) {
-                this.rrcssrv.server.httpServer.close();
-                this.rrcssrv.server.httpServer.on('close', () => {
-                    log.warn('RRCS Server closed');
-                    this.startRRCS();
-                });
+                if (xpEqual(xp, slave.xp)) {
+                    still_set_by.push(masterid)
+                    slfound = true;
+                    break;
+                }
             }
-            else
-                this.startRRCS();
+
+            if (slfound)
+                break;
+        }
+
+        if (still_set_by.length) {
+            log.debug(`Wont kill XP because it is still set by ${
+                still_set_by.length} masters`);
+            still_set_by.forEach(mid => log.debug(`    still set by: ${mid}`));
+        }
+        else {
+            try {
+                await this.killXP(xp);
+            }
+            catch (err) {
+                log.error(`Failed to kill XP ${__xpid(xp)}: ${err}`);
+            }
         }
     }
+}
 
-    startRRCS()
-    {
-    }
-
+/*
     processOSCCommand(cmd: string[])
     {
         let ccmd = cmd[0].split(' ');
@@ -849,31 +1008,6 @@ export class RRCSModule extends ServerModule {
         }
     }
 
-
-    initial(msg: any, error: any)
-    {
-        this.webif.broadcastNotification('RRCS', msg);
-        if (error)
-            console.log(error);
-    }
-    log(msg: any)
-    {
-        if (this.webif)
-            this.webif.broadcastNotification('RRCS', msg);
-        log.info(msg);
-    }
-    error(err: any)
-    {
-        log.error(err);
-    }
-    getAlive(msg: any)
-    {
-        return true;
-    }
-    crosspointChange(params: any)
-    {
-        console.log(params);
-    }
     sendString(params: any)
     {
         try {
@@ -893,89 +1027,4 @@ export class RRCSModule extends ServerModule {
                       + err);
         }
     }
-    gpInputChange(params: any)
-    {
-    }
-    logicSourceChange(params: any)
-    {
-    }
-    configurationChange(params: any)
-    {
-    }
-    upstreamFailed(params: any)
-    {
-    }
-    upstreamFaieldCleared(params: any)
-    {
-    }
-    downstreamFailed(params: any)
-    {
-    }
-    downstreamFailedCleared(params: any)
-    {
-    }
-    nodeControllerFailed(params: any)
-    {
-    }
-    nodeControllerReboot(params: any)
-    {
-    }
-    clientFailed(params: any)
-    {
-    }
-    clientFailedCleared(params: any)
-    {
-    }
-    portInactive(params: any)
-    {
-    }
-    portActive(params: any)
-    {
-    }
-    connectArtistRestored(params: any)
-    {
-    }
-    connectArtistFailed(params: any)
-    {
-    }
-    gatewayShutdown(params: any)
-    {
-    }
-    notFound(params: any)
-    {
-    }
-}
-*/
-
-/*
-this._srv.on('XpVolumeChange', (err, params, cb) => {
-    console.log(params);
-
-    this._cl.methodCall('SetXPVolume', [this._get_trs_key(), 1, 6, 24, 1, 6, 25,
-true, false, params[1][0].SingleVolume], (err, params) => { console.log(err);
-        console.log(params);
-    })
-
-    cb(null, [params[0]]);
-});
-
-this._srv.on('ConfigurationChange', (err, params, cb) => {
-    cb(null, [params[0]]);
-})
-
-this._cl.methodCall('RegisterForEventsEx', [this._get_trs_key(),
-"192.168.178.91", this._local_port, { "XpVolumeChange": true,
-"ConfigurationChange": true }], (err, val) => { console.log(err);
-    console.log(val);
-
-    this._cl.methodCall('XpVolumeChangeRegistryReset', [this._get_trs_key(),
-"192.168.178.91", this._local_port, []], (err, val) => { console.log(err);
-        console.log(val);
-        this._cl.methodCall('XpVolumeChangeRegistryAdd', [this._get_trs_key(),
-"192.168.178.91", this._local_port, [{ Destination: { Node: 2, Port: 48,
-IsInput: false }, Source: { Node: 2, Port: 50, IsInput: true } }]], (err, val)
-=> { console.log(err); console.log(val);
-        });
-    });
-})
 */

@@ -33,7 +33,6 @@ export const HeadtrackerInputEvents = {
 export class Headtracking extends ServerModule {
 
     init() {
-
         this.events.on(HeadtrackerInputEvents.RESET_HEADTRACKER, (id: number) => {
             let htrk = this.getHeadtracker(id);
             if(htrk)

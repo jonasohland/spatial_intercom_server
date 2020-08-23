@@ -4,11 +4,11 @@
   "description": "spatial intercom server application",
   "main": "dist/src/index",
   "scripts": {
-    "build": "tsc",
+    "build": "bin/validators.sh && echo 'Run TypeScript compiler' && tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "npm run build && node ./dist/index.js",
     "deploy": "bin/deploy.sh",
-    "develop": "tsc --watch",
+    "develop": "bin/validators.sh && tsc --watch",
     "validators": "bin/validators.sh"
   },
   "bin": {
