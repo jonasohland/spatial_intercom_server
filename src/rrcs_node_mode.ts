@@ -42,10 +42,10 @@ class RRCSMessageInterceptor extends NodeMessageInterceptor {
                 this.rrcs.setXPSyncs(syncs);
             }
             case 'xp-sync-add-slaves': {
-                this.rrcs.xpSyncAddSlaves(<XPSyncModifySlavesMessage> msg.data);
+                return this.rrcs.xpSyncAddSlaves(<XPSyncModifySlavesMessage> msg.data);
             }
             case 'xp-sync-remove-slaves': {
-
+                return this.rrcs.xpSyncRemoveSlaves(<XPSyncModifySlavesMessage> msg.data);
             }
         }
     }

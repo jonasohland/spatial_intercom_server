@@ -20,6 +20,7 @@ import {
     CrosspointVolumeSourceState,
     CrosspointVolumeTarget,
     xpEqual,
+    XPSyncModifySlavesMessage,
     xpvtid,
 } from './rrcs_defs';
 import {ignore} from './util';
@@ -36,7 +37,7 @@ class Sync extends ManagedNodeStateObject<CrosspointSync> {
     {
         super();
         this.remote = remote;
-        this.data = sync;
+        this.data   = sync;
     }
 
     addSlaves(slvs: CrosspointVolumeTarget[])
@@ -46,7 +47,7 @@ class Sync extends ManagedNodeStateObject<CrosspointSync> {
                 log.debug(`Add slave xp ${__xpid(slv.xp)}`);
                 this.data.slaves.push(slv);
             }
-        })
+        });
     }
 
     removeSlaves(slvs: CrosspointVolumeTarget[])
@@ -164,6 +165,12 @@ class RRCSNodeModule extends NodeModule {
             mastersync.save().catch(
                 err => log.error(`Could not write data to node ${err}`));
             this._webif_update_sync_list();
+            this.rrcs.set('xp-sync-add-slaves', <XPSyncModifySlavesMessage>{
+                master : msg.masterid,
+                slaves : [ msg.slave ]
+            }).catch(err => {
+                log.error(`Could not write changes to rrcs ${err}`);
+            });
         }
     }
 
@@ -175,6 +182,12 @@ class RRCSNodeModule extends NodeModule {
             mastersync.save().catch(
                 err => log.error(`Could not write data to node ${err}`));
             this._webif_update_sync_list();
+            this.rrcs.set('xp-sync-remove-slaves', <XPSyncModifySlavesMessage>{
+                master : msg.masterid,
+                slaves : [ msg.slave ]
+            }).catch(err => {
+                log.error(`Could not write changes to rrcs ${err}`);
+            });
         }
     }
 
