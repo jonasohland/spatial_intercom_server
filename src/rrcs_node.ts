@@ -91,6 +91,11 @@ class SyncList extends ManagedNodeStateMapRegister {
 
     async remove(name: string, obj: ManagedNodeStateObject<any>)
     {
+        if (this.remote) {
+            await this.remote.set('remove-xp-sync', name);
+        }
+        else
+            log.warn(`Could not remove ${name} not connected to remote`);
     }
 
     async insert(name: string, obj: any)
@@ -109,6 +114,12 @@ class SyncList extends ManagedNodeStateMapRegister {
             return this._objects[sync];
         else
             return this._objects[xpvtid(sync.master)]
+    }
+
+    async removeMaster(id: string)
+    {
+        if (this.contains(id))
+            await this.removeObject(id);
     }
 }
 
@@ -157,6 +168,20 @@ class RRCSNodeModule extends NodeModule {
             });
     }
 
+    removeXPSync(id: string)
+    {
+        if (this.syncs.contains(id)) {
+            this.syncs.removeMaster(id)
+                .then(() => this.syncs.save())
+                .then(() => {
+                    this._webif_update_sync_list();
+                })
+                .catch(err => {
+                    log.error(`Could not remove sync ${id}: ${err}`);
+                });
+        }
+    }
+
     addSlaveToSync(msg: AddCrosspointVolumeTargetMessage)
     {
         let mastersync = <Sync>this.syncs.getSyncForMaster(msg.masterid);
@@ -165,12 +190,14 @@ class RRCSNodeModule extends NodeModule {
             mastersync.save().catch(
                 err => log.error(`Could not write data to node ${err}`));
             this._webif_update_sync_list();
-            this.rrcs.set('xp-sync-add-slaves', <XPSyncModifySlavesMessage>{
-                master : msg.masterid,
-                slaves : [ msg.slave ]
-            }).catch(err => {
-                log.error(`Could not write changes to rrcs ${err}`);
-            });
+            this.rrcs
+                .set('xp-sync-add-slaves', <XPSyncModifySlavesMessage>{
+                    master : msg.masterid,
+                    slaves : [ msg.slave ]
+                })
+                .catch(err => {
+                    log.error(`Could not write changes to rrcs ${err}`);
+                });
         }
     }
 
@@ -182,12 +209,14 @@ class RRCSNodeModule extends NodeModule {
             mastersync.save().catch(
                 err => log.error(`Could not write data to node ${err}`));
             this._webif_update_sync_list();
-            this.rrcs.set('xp-sync-remove-slaves', <XPSyncModifySlavesMessage>{
-                master : msg.masterid,
-                slaves : [ msg.slave ]
-            }).catch(err => {
-                log.error(`Could not write changes to rrcs ${err}`);
-            });
+            this.rrcs
+                .set('xp-sync-remove-slaves', <XPSyncModifySlavesMessage>{
+                    master : msg.masterid,
+                    slaves : [ msg.slave ]
+                })
+                .catch(err => {
+                    log.error(`Could not write changes to rrcs ${err}`);
+                });
         }
     }
 
@@ -284,7 +313,7 @@ class RRCSNodeModule extends NodeModule {
                     'all', `${this.myNodeId()}.rrcs.artists`, this._cached);
             })
             .catch(err => {
-                log.error('Could not load artist state' + err);
+                log.error(`Could not load artist state: ${err}`);
             })
     }
 
@@ -350,7 +379,12 @@ export class RRCSServerModule extends ServerModule {
                 else
                     this.server._webif.broadcastError(
                         'RRCS', 'Could not remove XPSync slave: missing data');
-            })
+            });
+
+        this.handleWebInterfaceEvent(
+            'remove-xp-sync', (socket, node: RRCSNode, data: string) => {
+                node.rrcs.removeXPSync(data);
+            });
     }
 
     joined(socket: SocketIO.Socket, topic: string)

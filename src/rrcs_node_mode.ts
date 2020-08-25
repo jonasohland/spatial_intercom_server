@@ -37,9 +37,14 @@ class RRCSMessageInterceptor extends NodeMessageInterceptor {
                 this.rrcs.addXPSync((<any> msg.data).master, (<any> msg.data).slaves);
                 return "ok";
             }
+            case 'remove-xp-sync': {
+                await this.rrcs.removeXPSync(<string> msg.data);
+                return 'ok';
+            }
             case 'xp-syncs': {
                 let syncs = <CrosspointSync[]> <any> msg.data;
                 this.rrcs.setXPSyncs(syncs);
+                return 'ok';
             }
             case 'xp-sync-add-slaves': {
                 return this.rrcs.xpSyncAddSlaves(<XPSyncModifySlavesMessage> msg.data);

@@ -287,12 +287,25 @@ export abstract class ManagedNodeStateMapRegister extends
         return ob;
     }
 
+    contains(name: string)
+    {
+        return this._objects[name] != null;
+    }
+
+    async removeObject(name: string)
+    {
+        return this._wrap_remove(name, null);
+    }
+
     async _wrap_remove(name: string, obj: ManagedNodeStateObject<any>)
     {
-        // log.debug(`Removing object [${obj.constructor.name}] ${name} from
-        // ${this._name}`);
-        delete this._objects[name];
-        return this.remove(name, obj);
+        if (this.contains(name)) {
+            log.debug(`Removing object [${this._objects[name].constructor}] ${name} from
+                ${this._name}`);
+            delete this._objects[name];
+            return this.remove(name, obj);
+        } else
+            throw new Error(`Could not remove ${name}: Object not found`);
     }
 
     async insertExt(name: string, data: ManagedNodeStateObjectData)
