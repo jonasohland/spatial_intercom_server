@@ -300,7 +300,7 @@ export abstract class ManagedNodeStateMapRegister extends
     async _wrap_remove(name: string, obj: ManagedNodeStateObject<any>)
     {
         if (this.contains(name)) {
-            log.debug(`Removing object [${this._objects[name].constructor}] ${name} from
+            log.debug(`Removing object [${this._objects[name].constructor.name}] ${name} from
                 ${this._name}`);
             delete this._objects[name];
             return this.remove(name, obj);

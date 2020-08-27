@@ -19,7 +19,9 @@ import {
     UserDeleteInputMessage,
     UserInputGainChangeMessage,
     UserModifyInputMessage,
-    UserPanInputMessage
+    UserModifyXTCMessage,
+    UserPanInputMessage,
+    XTCSettings
 } from './users_defs';
 import {ensurePortTypeEnum} from './util';
 
@@ -508,33 +510,36 @@ export class UsersManager extends ServerModule {
             });
 
         this.handleWebInterfaceEvent(
-                'user.input.heigth',
-                (socket: SocketIO.Socket, node: DSPNode,
-                 data: UserPanInputMessage) => {
-                    this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
-                                      GraphBuilderInputEvents.HEIGHT,
-                                      data.userid, data.spid, data.value);
-                })
+            'user.input.heigth', (socket: SocketIO.Socket, node: DSPNode,
+                                  data: UserPanInputMessage) => {
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.HEIGHT, data.userid,
+                                  data.spid, data.value);
+            });
 
-            this.handleWebInterfaceEvent(
-                    'user.input.width',
-                    (socket: SocketIO.Socket, node: DSPNode,
-                     data: UserPanInputMessage) => {
-                        this.emitToModule(node.id(),
-                                          DSPModuleNames.GRAPH_BUILDER,
-                                          GraphBuilderInputEvents.WIDTH,
-                                          data.userid, data.spid, data.value);
-                    })
+        this.handleWebInterfaceEvent(
+            'user.input.width', (socket: SocketIO.Socket, node: DSPNode,
+                                 data: UserPanInputMessage) => {
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.WIDTH, data.userid,
+                                  data.spid, data.value);
+            });
 
-                this.handleWebInterfaceEvent(
-                    'user.headtracker',
-                    (socket: SocketIO.Socket, node: DSPNode,
-                     data: UserAssignHeadtrackerMessage) => {
-                        this.emitToModule(
-                            node.id(), DSPModuleNames.GRAPH_BUILDER,
-                            GraphBuilderInputEvents.ASSIGN_HEADTRACKER,
-                            data.userid, data.headtrackerid);
-                    });
+        this.handleWebInterfaceEvent(
+            'user.headtracker', (socket: SocketIO.Socket, node: DSPNode,
+                                 data: UserAssignHeadtrackerMessage) => {
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.ASSIGN_HEADTRACKER,
+                                  data.userid, data.headtrackerid);
+            });
+
+        this.handleWebInterfaceEvent(
+            'user.xtc', (socket: SocketIO.Socket, node: DSPNode,
+                         data: UserModifyXTCMessage) => {
+                this.emitToModule(node.id(), DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.MODIFY_XTC, data.user,
+                                  data.xtc);
+            });
 
         this.handleWebInterfaceEvent(
             'user.modify',

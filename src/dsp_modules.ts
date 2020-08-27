@@ -1,4 +1,10 @@
-import { PortTypes, SourceUtils, SourceParameterSet, Source, isAmbi} from './dsp_defs';
+import {
+    isAmbi,
+    PortTypes,
+    Source,
+    SourceParameterSet,
+    SourceUtils
+} from './dsp_defs';
 import {
     AmbiBus,
     Bus,
@@ -10,11 +16,11 @@ import {
 } from './dsp_graph'
 import {GraphBuilderOutputEvents} from './dsp_graph_builder';
 import * as Logger from './log';
+import {Room} from './rooms';
+import {RoomData} from './rooms_defs';
 import {SpatializedInput, User} from './users';
-import {UserData} from './users_defs';
-import { ignore } from './util';
-import { RoomData } from './rooms_defs';
-import { Room } from './rooms';
+import {UserData, XTCSettings} from './users_defs';
+import {ignore} from './util';
 
 const log = Logger.get('DSPMOD');
 
@@ -40,36 +46,38 @@ function normalizeIEMStWidthDegs(value: number)
 export class GainNode extends NativeNode {
 
     _remote_alive: boolean = false;
-    _gain: number = 0;
+    _gain: number          = 0;
 
     constructor(name: string, ty: PortTypes)
     {
-        super(name, "gain_node");
+        super(name, 'gain_node');
         this.addInputBus(Bus.createMain(1, ty));
         this.addOutputBus(Bus.createMain(1, ty));
     }
 
-    setGain(gain: number) 
+    setGain(gain: number)
     {
         this._gain = gain;
-        if(this._remote_alive)
+        if (this._remote_alive)
             this.remote.set('gain', this._gain);
     }
 
-    onRemotePrepared(): void {
+    onRemotePrepared(): void
+    {
         this._remote_alive = true;
-        this.remote.set('gain', this._gain).catch(err => log.error(`Could not set gain for gain-node ${err}`));
+        this.remote.set('gain', this._gain)
+            .catch(err => log.error(`Could not set gain for gain-node ${err}`));
     }
-    onRemoteAlive(): void {
-
+    onRemoteAlive(): void
+    {
     }
-    remoteAttached(): void {
-
+    remoteAttached(): void
+    {
     }
 }
 
 export class BasicSpatializer extends NativeNode {
-    onRemotePrepared(): void 
+    onRemotePrepared(): void
     {
     }
     onRemoteAlive(): void
@@ -114,7 +122,7 @@ export class BasicSpatializer extends NativeNode {
 }
 
 export class BasicBinauralDecoder extends NativeNode {
-    onRemotePrepared(): void 
+    onRemotePrepared(): void
     {
     }
     onRemoteAlive(): void
@@ -136,26 +144,56 @@ export class BasicBinauralDecoder extends NativeNode {
 export class AdvancedBinauralDecoder extends NativeNode {
 
     _htrk_id: number = -1;
+    _ref_in: Bus;
+    _ref_out: Bus
+    _xtc: XTCSettings;
 
-    onRemotePrepared(): void {
+    setXTCSettings(xtc: XTCSettings)
+    {
+        this._xtc = xtc;
+        if (this.remote)
+            this.remote.set('xtc', xtc);
+    }
+
+    onRemotePrepared(): void
+    {
     }
 
     onRemoteAlive(): void
     {
-        if(this._htrk_id != -1) {
+        if (this._htrk_id != -1) {
             this.setHeadtrackerId(this._htrk_id).catch(err => {
-                log.error("Could not set headtracker id");
+                log.error('Could not set headtracker id');
             })
         }
         this.remote.set('mute', false);
+        this.remote.set('xtc', this._xtc);
     }
 
-    constructor(name: string, order: number, headtracker_id: number)
+    constructor(name: string, order: number, headtracker_id: number, xtc: XTCSettings)
     {
         super(name, 'advanced_binaural_decoder');
+
         this.addInputBus(AmbiBus.createMainForOrder(order, 1));
         this.addOutputBus(Bus.createMainStereo(1));
+
+        this._ref_in  = Bus.createStereo('ref', 1);
+        this._ref_out = Bus.createStereo('ref', 1);
+        this.addInputBus(this._ref_in);
+        this.addOutputBus(this._ref_out);
+
         this._htrk_id = headtracker_id;
+        this._xtc = xtc;
+    }
+
+    refIn()
+    {
+        return this._ref_in;
+    }
+
+    refOut()
+    {
+        return this._ref_out;
     }
 
     remoteAttached()
@@ -231,12 +269,12 @@ export class BasicSpatializerModule {
 }
 
 export abstract class SpatializationModule extends Module {
-    abstract pan(params: SourceParameterSet) : void;
+    abstract pan(params: SourceParameterSet): void;
     abstract setAzimuth(a: number): void;
     abstract setElevation(e: number): void;
     abstract setHeight(h: number): void;
     abstract setWidth(w: number): void;
-    abstract setGain(gain: number): void; 
+    abstract setGain(gain: number): void;
     abstract userId(): string;
     abstract outputBuses(graph: Graph): Bus[];
     abstract monoRefBuses(): Bus[];
@@ -250,7 +288,7 @@ export class MultiSpatializer extends NativeNode {
     _chcount: number;
     _params: SourceParameterSet;
     _mute: boolean = false;
-    _gain: number = 0.;
+    _gain: number  = 0.;
 
     _stereoref: Bus;
     _monoref: Bus;
@@ -268,39 +306,42 @@ export class MultiSpatializer extends NativeNode {
     setElevation(elevation: number)
     {
         this._params.e = elevation;
-        if(this.remote)
+        if (this.remote)
             this._apply_sources().catch(err => {});
     }
 
     setAzimuth(azimuth: number)
     {
         this._params.a = azimuth;
-        if(this.remote)
+        if (this.remote)
             this._apply_sources().catch(err => {});
     }
 
-    setGain(gain: number) {
+    setGain(gain: number)
+    {
         this._gain = gain;
-        if(this.remote)
-            this._apply_gain().catch(err => log.error(`Could not apply gain: ${err}`));
+        if (this.remote)
+            this._apply_gain().catch(
+                err => log.error(`Could not apply gain: ${err}`));
     }
 
     pan(params: SourceParameterSet)
     {
         this._params = params;
-        if(this.remote)
+        if (this.remote)
             this._apply_sources().catch(err => {});
     }
 
     onRemoteAlive()
     {
-        
     }
 
-    onRemotePrepared(): void {
+    onRemotePrepared(): void
+    {
         log.info('MultiSpatializer remote prepared');
         this._apply_all_parameters().catch(err => {
-            log.error("Could not apply all parameters for Spatializer " + this.id + " " + err);        
+            log.error('Could not apply all parameters for Spatializer '
+                      + this.id + ' ' + err);
         });
     }
 
@@ -318,7 +359,7 @@ export class MultiSpatializer extends NativeNode {
         this.remote.set('mute', false);
     }
 
-    async _apply_all_parameters() 
+    async _apply_all_parameters()
     {
         await this.remote.set('mute', this._mute);
         await this.remote.set('gain', this._gain);
@@ -327,10 +368,11 @@ export class MultiSpatializer extends NativeNode {
 
     async _apply_sources()
     {
-        return this.remote.set('sources', SourceUtils[this._chtype].pan(this._params));
+        return this.remote.set(
+            'sources', SourceUtils[this._chtype].pan(this._params));
     }
 
-    async _apply_gain() 
+    async _apply_gain()
     {
         return this.remote.set('gain', this._gain);
     }
@@ -338,15 +380,15 @@ export class MultiSpatializer extends NativeNode {
     constructor(name: string, type: PortTypes)
     {
         super(name, 'multi_spatializer');
-        this._chtype = type;
+        this._chtype  = type;
         this._chcount = SourceUtils[type].channels;
         this.addInputBus(Bus.createMain(1, type));
         this.addOutputBus(Bus.createMain(1, PortTypes.Ambi_O3));
         this._stereoref = Bus.createStereo('stereoref', 1);
-        this._monoref = Bus.createMono('monoref', 1);
+        this._monoref   = Bus.createMono('monoref', 1);
         this.addOutputBus(this._stereoref);
         this.addOutputBus(this._monoref);
-        this._params = SourceUtils[type].defaults();
+        this._params   = SourceUtils[type].defaults();
         this._params.e = -10;
     }
 }
@@ -366,7 +408,7 @@ export class RoomSpatializer extends NativeNode {
         super(name, 'advanced_spatializer');
         this.addInputBus(Bus.createMainAny(1));
         this.addOutputBus(AmbiBus.createMainForOrder(3, 1));
-        this._monoref = Bus.createMono('monoref', 1);
+        this._monoref   = Bus.createMono('monoref', 1);
         this._stereoref = Bus.createStereo('stereoref', 1);
         this.addOutputBus(this._stereoref);
         this.addOutputBus(this._monoref);
@@ -390,12 +432,14 @@ export class RoomSpatializer extends NativeNode {
     {
     }
 
-    onRemotePrepared(): void 
+    onRemotePrepared(): void
     {
         this._remote_alive = true;
         this.panSource(this._cached_source);
-        this._set_roomdata().catch(err => log.error("Could not set roomdata " + err));
-        this.remote.set('gain', this._gain).catch(err => log.error("Could not set gain " + err));
+        this._set_roomdata().catch(
+            err => log.error('Could not set roomdata ' + err));
+        this.remote.set('gain', this._gain)
+            .catch(err => log.error('Could not set gain ' + err));
     }
 
     panSource(source: Source)
@@ -404,71 +448,75 @@ export class RoomSpatializer extends NativeNode {
         this._setxyz(source.a, source.e);
     }
 
-    setGain(gain: number) {
+    setGain(gain: number)
+    {
         this._gain = gain;
-        if(this._remote_alive) 
+        if (this._remote_alive)
             this.remote.set('gain', this._gain);
     }
 
     setRoomData(room: RoomData)
     {
         this._roomdata = room;
-        this._set_roomdata().catch(err => log.error("Could not set roomdata " + err));
+        this._set_roomdata().catch(
+            err => log.error('Could not set roomdata ' + err));
     }
 
-    setRoomEnabled(room: RoomData) 
+    setRoomEnabled(room: RoomData)
     {
         this._roomdata = room;
-        if(this._remote_alive) {
-            if(this._roomdata.enabled)
+        if (this._remote_alive) {
+            if (this._roomdata.enabled)
                 this.remote.set('reflections', this._roomdata.reflections);
             else
                 this.remote.set('reflections', 0.);
         }
     }
 
-    setRoomReflections(room: RoomData) 
+    setRoomReflections(room: RoomData)
     {
         this.setRoomEnabled(room);
     }
 
-    setRoomAttn(room: RoomData) 
+    setRoomAttn(room: RoomData)
     {
         this._roomdata = room;
-        if(this._remote_alive)
+        if (this._remote_alive)
             this.remote.set('attn', this._roomdata.attn);
     }
 
-    setRoomShape(room: RoomData) 
+    setRoomShape(room: RoomData)
     {
         this._roomdata = room;
-        if(this._remote_alive)
+        if (this._remote_alive)
             this.remote.set('shape', this._roomdata.room);
     }
 
-    setRoomHighshelf(room: RoomData) 
+    setRoomHighshelf(room: RoomData)
     {
         this._roomdata = room;
-        if(this._remote_alive)
+        if (this._remote_alive)
             this.remote.set('highshelf', this._roomdata.eq.high);
     }
 
-    setRoomLowshelf(room: RoomData) 
+    setRoomLowshelf(room: RoomData)
     {
         this._roomdata = room;
-        if(this._remote_alive)
+        if (this._remote_alive)
             this.remote.set('lowshelf', this._roomdata.eq.low);
     }
 
-    async _set_roomdata() {
-        if(this.remote) {
+    async _set_roomdata()
+    {
+        if (this.remote) {
             await this.remote.set('shape', this._roomdata.room);
             await this.remote.set('highshelf', this._roomdata.eq.high);
             await this.remote.set('lowshelf', this._roomdata.eq.low);
             await this.remote.set('attn', this._roomdata.attn);
-            
-            if(this._roomdata.enabled)
-                await this.remote.set('reflections', this._roomdata.reflections);
+
+            if (this._roomdata.enabled)
+                await this.remote.set(
+                    'reflections', this._roomdata.reflections);
             else
                 await this.remote.set('reflections', 0.);
         }
@@ -478,7 +526,7 @@ export class RoomSpatializer extends NativeNode {
     {
         let a_rad = a * -1 * Math.PI / 180;
         let e_rad = e * Math.PI / 180;
-        if(this._remote_alive) {
+        if (this._remote_alive) {
             let x = Math.cos(a_rad) * Math.cos(e_rad) * 0.15 + 0.5;
             let y = Math.sin(a_rad) * Math.cos(e_rad) * 0.15 + 0.5;
             let z = Math.sin(e_rad) * 0.15 + 0.5;
@@ -492,11 +540,13 @@ export class SimpleUsersModule extends Module {
     _usr: User;
     _decoder_id: number;
     _decoder: AdvancedBinauralDecoder;
+    _xtcsettings: XTCSettings;
 
     constructor(user: User)
     {
         super();
         this._usr = user;
+        this._xtcsettings = user.get().xtc;
     }
 
     input(graph: Graph): Bus
@@ -515,38 +565,47 @@ export class SimpleUsersModule extends Module {
 
     setHeadtrackerId(id: number)
     {
-        this._decoder
+        this._decoder.setHeadtrackerId(id);
+    }
+
+    setXTCSettings(xtc: XTCSettings)
+    {
+        this._xtcsettings = xtc;
+        if (this._decoder)
+            this._decoder.setXTCSettings(this._xtcsettings);
     }
 
     build(graph: Graph): void
     {
 
-        this._decoder         = new AdvancedBinauralDecoder(this._usr.get().name, 3, this._usr.get().headtracker || -1);
+        this._decoder = new AdvancedBinauralDecoder(
+            this._usr.get().name, 3, this._usr.get().headtracker || -1, this._xtcsettings);
         this._decoder_id = graph.addNode(this._decoder);
 
         let spatializers = <SpatializationModule[]>graph.modules.filter(
             module => module instanceof SpatializationModule);
-        let my_spatializers = spatializers.filter(sp => sp.userId()
-                                                        === this._usr.get().id);
+        let my_spatializers
+            = spatializers.filter(sp => sp.userId() === this._usr.get().id);
 
         let output_start = this._usr.get().channel;
 
         my_spatializers.forEach(spatializer => {
             spatializer.outputBuses(graph).forEach(bus => {
                 let con = bus.connect(this._decoder.getMainInputBus());
-                if(con)
+                if (con)
                     graph.addConnection(con);
             });
 
             spatializer.stereoRefBuses().forEach(bus => {
-                let con = bus.connectOtherIdx(graph.graphExitBus(), output_start + 2);
-                if(con)
+                let con = bus.connect(this._decoder.refIn());
+                if (con)
                     graph.addConnection(con);
             });
 
             spatializer.monoRefBuses().forEach(bus => {
-                let con = bus.connectOtherIdx(graph.graphExitBus(), output_start + 4);
-                if(con)
+                let con = bus.connectOtherIdx(
+                    graph.graphExitBus(), output_start + 4);
+                if (con)
                     graph.addConnection(con);
             })
         });
@@ -554,9 +613,18 @@ export class SimpleUsersModule extends Module {
         let output_con = this._decoder.getMainOutputBus().connectOtherIdx(
             graph.graphExitBus(), this._usr.get().channel);
 
-        
+        let output_con_ref = this._decoder.refOut().connectOtherIdx(
+            graph.graphExitBus(), output_start + 2);
 
-        graph.addConnection(output_con);
+        if (output_con)
+            graph.addConnection(output_con);
+        else
+            log.error("Could not connect binaural signal to graph output");
+
+        if (output_con_ref)
+            graph.addConnection(output_con_ref);
+        else
+            log.error("Could not connect stereo reference output to graph output");
     }
 
     destroy(graph: Graph): void
@@ -573,7 +641,7 @@ export class SimpleUsersModule extends Module {
 export class RoomSpatializerModule extends SpatializationModule {
 
     _input: SpatializedInput;
-    _encoder_nids: number[] = [];
+    _encoder_nids: number[]      = [];
     _encoders: RoomSpatializer[] = [];
     _gain_node: GainNode;
     _gain: number;
@@ -583,55 +651,63 @@ export class RoomSpatializerModule extends SpatializationModule {
     constructor(input: SpatializedInput, roomdata: RoomData)
     {
         super();
-        this._input = input;
-        this._gain = input.get().gain;
+        this._input         = input;
+        this._gain          = input.get().gain;
         this._cached_params = SourceUtils[input.findSourceType()].defaults();
-        this._roomdata = roomdata;
+        this._roomdata      = roomdata;
     }
 
-    userId(): string {
+    userId(): string
+    {
         return this._input.get().userid;
     }
 
-    room() {
+    room()
+    {
         return this._input.get().room;
     }
 
-    pan(params: SourceParameterSet): void {
-        
+    pan(params: SourceParameterSet): void
+    {
+
         this._cached_params = params;
-        
+
         let sources = SourceUtils[this._input.findSourceType()].pan(params);
         sources.forEach((source, idx) => {
-            if(this._encoders[idx])
+            if (this._encoders[idx])
                 this._encoders[idx].panSource(source);
         });
     }
 
-    setAzimuth(a: number): void {
+    setAzimuth(a: number): void
+    {
         this._cached_params.a = a;
         this.pan(this._cached_params);
     }
 
-    setElevation(e: number): void {
+    setElevation(e: number): void
+    {
         this._cached_params.e = e;
         this.pan(this._cached_params);
     }
 
-    setGain(gain: number) {
+    setGain(gain: number)
+    {
         this._gain = gain;
-        if(this._gain_node)
+        if (this._gain_node)
             this._gain_node.setGain(gain);
         else
             this._encoders.forEach(enc => enc.setGain(gain));
-    }    
-    
-    setHeight(h: number): void {
+    }
+
+    setHeight(h: number): void
+    {
         this._cached_params.height = h;
         this.pan(this._cached_params);
     }
 
-    setWidth(w: number): void {
+    setWidth(w: number): void
+    {
         this._cached_params.width = w;
         this.pan(this._cached_params);
     }
@@ -642,108 +718,120 @@ export class RoomSpatializerModule extends SpatializationModule {
         this._encoders.forEach(encoder => encoder.setRoomData(room));
     }
 
-    setRoomEnabled(room: RoomData) 
+    setRoomEnabled(room: RoomData)
     {
         this._encoders.forEach(encoder => encoder.setRoomEnabled(room));
     }
 
-    setRoomReflections(room: RoomData) 
+    setRoomReflections(room: RoomData)
     {
         this._encoders.forEach(encoder => encoder.setRoomReflections(room));
     }
 
-    setRoomAttn(room: RoomData) 
+    setRoomAttn(room: RoomData)
     {
         this._encoders.forEach(encoder => encoder.setRoomAttn(room));
     }
 
-    setRoomShape(room: RoomData) 
+    setRoomShape(room: RoomData)
     {
         this._encoders.forEach(encoder => encoder.setRoomShape(room));
     }
 
-    setRoomHighshelf(room: RoomData) {
+    setRoomHighshelf(room: RoomData)
+    {
         this._encoders.forEach(encoder => encoder.setRoomHighshelf(room));
     }
 
-    setRoomLowshelf(room: RoomData) {
+    setRoomLowshelf(room: RoomData)
+    {
         this._encoders.forEach(encoder => encoder.setRoomLowshelf(room));
     }
 
-    input(graph: Graph): Bus {
+    input(graph: Graph): Bus
+    {
         ignore(graph);
         return null;
     }
 
-    output(graph: Graph): Bus {
+    output(graph: Graph): Bus
+    {
         ignore(graph);
         return null;
     }
 
     outputBuses(graph: Graph)
     {
-        if(this._gain_node)
+        if (this._gain_node)
             return [ this._gain_node.getMainOutputBus() ];
         else
             return this._encoders.map(encoder => encoder.getMainOutputBus());
     }
 
-    monoRefBuses(): Bus[] {
-        if(this._gain_node)
+    monoRefBuses(): Bus[]
+    {
+        if (this._gain_node)
             return [];
         else
             return this._encoders.map(encoder => encoder.monoRefBus());
     }
 
-    stereoRefBuses(): Bus[] {
-        if(this._gain_node)
+    stereoRefBuses(): Bus[]
+    {
+        if (this._gain_node)
             return [];
         else
             return this._encoders.map(encoder => encoder.stereoRefBus());
     }
 
-    graphChanged(graph: Graph): void 
+    graphChanged(graph: Graph): void
     {
     }
 
-    build(graph: Graph): void 
+    build(graph: Graph): void
     {
-        let sourcetype = this._input.findSourceType();
+        let sourcetype    = this._input.findSourceType();
         let sourcechcount = SourceUtils[sourcetype].channels;
-        let firstchannel = this._input.findSourceChannel();
+        let firstchannel  = this._input.findSourceChannel();
 
-        if(isAmbi(sourcetype)) {
-            this._gain_node = new GainNode("GainNode " + this._input.get().id, sourcetype);
+        if (isAmbi(sourcetype)) {
+            this._gain_node
+                = new GainNode('GainNode ' + this._input.get().id, sourcetype);
             this._gain_node.setGain(this._gain);
             this._encoder_nids.push(graph.addNode(this._gain_node));
-            let connection = graph.graphRootBus().connectIdx(this._gain_node.getMainInputBus(), firstchannel);
-            if(connection)
+            let connection = graph.graphRootBus().connectIdx(
+                this._gain_node.getMainInputBus(), firstchannel);
+            if (connection)
                 graph.addConnection(connection);
             else
-                log.error("Could not connect gain node for output");
-        } else {
-            for(let i = 0; i < sourcechcount; ++i) {
+                log.error('Could not connect gain node for output');
+        }
+        else {
+            for (let i = 0; i < sourcechcount; ++i) {
                 let node = new RoomSpatializer('' + i);
                 node.setRoomData(this._roomdata);
                 node.setGain(this._gain);
                 this._encoder_nids.push(graph.addNode(node));
                 this._encoders.push(node);
-                let connection = graph.graphRootBus().connectIdx(node.getMainInputBus(), firstchannel + i);
-    
-                if(connection)
+                let connection = graph.graphRootBus().connectIdx(
+                    node.getMainInputBus(), firstchannel + i);
+
+                if (connection)
                     graph.addConnection(connection);
                 else {
-                    log.error(`Could not connect input for RoomSpatializer ${this._input.get().inputid}`);
+                    log.error(`Could not connect input for RoomSpatializer ${
+                        this._input.get().inputid}`);
                 }
             }
-    
+
             this.pan(this._cached_params);
         }
     }
 
-    destroy(graph: Graph): void {
+    destroy(graph: Graph): void
+    {
         this._encoders.forEach(enc => graph.removeNode(enc));
-        if(this._gain_node)
+        if (this._gain_node)
             graph.removeNode(this._gain_node);
     }
 }
@@ -758,38 +846,44 @@ export class MultiSpatializerModule extends SpatializationModule {
     _cached_gain = 0.;
     _ambi: boolean;
 
-    pan(params: SourceParameterSet): void {
+    pan(params: SourceParameterSet): void
+    {
         this._params_cached = params;
-        if(this._spatializer_node)
+        if (this._spatializer_node)
             this._spatializer_node.pan(params);
     }
 
-    setAzimuth(a: number): void {
+    setAzimuth(a: number): void
+    {
         this._params_cached.a = a;
-        if(this._spatializer_node)
+        if (this._spatializer_node)
             this._spatializer_node.setAzimuth(a);
     }
 
-    setElevation(e: number): void {
+    setElevation(e: number): void
+    {
         this._params_cached.e = e;
-        if(this._spatializer_node)
+        if (this._spatializer_node)
             this._spatializer_node.setElevation(e);
     }
 
-    setGain(gain: number) {
+    setGain(gain: number)
+    {
         this._cached_gain = gain;
-        if(this._spatializer_node)
+        if (this._spatializer_node)
             this._spatializer_node.setGain(this._cached_gain);
-        else if(this._gain_node)
+        else if (this._gain_node)
             this._gain_node.setGain(this._cached_gain);
     }
 
-    setHeight(h: number): void {
+    setHeight(h: number): void
+    {
         this._params_cached.height = h;
         this.pan(this._params_cached);
     }
 
-    setWidth(w: number): void {
+    setWidth(w: number): void
+    {
         this._params_cached.width = w;
         this.pan(this._params_cached);
     }
@@ -804,34 +898,39 @@ export class MultiSpatializerModule extends SpatializationModule {
         return graph.getNode(this._node_id).getMainOutputBus();
     }
 
-    outputBuses(graph: Graph): Bus[] {
+    outputBuses(graph: Graph): Bus[]
+    {
         return [ graph.getNode(this._node_id).getMainOutputBus() ];
     }
 
-    monoRefBuses(): Bus[] {
+    monoRefBuses(): Bus[]
+    {
         return [ this._spatializer_node.monoRefBus() ];
     }
-    stereoRefBuses(): Bus[] {
+    stereoRefBuses(): Bus[]
+    {
         return [ this._spatializer_node.stereoRefBus() ];
     }
-    
+
 
     graphChanged(graph: Graph): void
     {
     }
 
-    userId(): string {
+    userId(): string
+    {
         return this._input.get().userid;
     }
 
     build(graph: Graph): void
     {
         let node;
-        if(this._ambi) {
-            node = new GainNode("AmbiSource Gain " + this._input.get().id, this._input.findSourceType());
+        if (this._ambi) {
+            node = new GainNode('AmbiSource Gain ' + this._input.get().id,
+                                this._input.findSourceType());
             this._gain_node = node;
             node.setGain(this._cached_gain);
-        } 
+        }
         else {
             node = new MultiSpatializer(
                 `MultiSpatializer [${this._input.findSourceType()}]`,
@@ -843,7 +942,7 @@ export class MultiSpatializerModule extends SpatializationModule {
 
         this._node_id = graph.addNode(node);
 
-        if(this._spatializer_node)
+        if (this._spatializer_node)
             this._spatializer_node.pan(this._params_cached);
 
         let mainInputConnection = graph.graphRootBus().connectIdx(
@@ -868,9 +967,9 @@ export class MultiSpatializerModule extends SpatializationModule {
     constructor(input: SpatializedInput)
     {
         super();
-        this._input = input;
+        this._input         = input;
         this._params_cached = SourceUtils[input.findSourceType()].defaults();
-        this._ambi = isAmbi(input.findSourceType());
-        this._cached_gain = input.get().gain;
+        this._ambi          = isAmbi(input.findSourceType());
+        this._cached_gain   = input.get().gain;
     }
 };

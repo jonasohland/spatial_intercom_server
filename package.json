@@ -80,6 +80,7 @@
     "endOfLine": "auto"
   },
   "devDependencies": {
+    "gts": "^2.0.2",
     "typedoc": "^0.15.6",
     "typescript": "^3.7.3"
   },

@@ -1,6 +1,9 @@
 #!/bin/bash
 
-types=(CrosspointSync AddCrosspointVolumeTargetMessage XPSyncModifySlavesMessage)
+types=(CrosspointSync\
+       AddCrosspointVolumeTargetMessage\
+       UserData\
+       XPSyncModifySlavesMessage)
 pids=()
 
 mkdir -p dist/src/schemas

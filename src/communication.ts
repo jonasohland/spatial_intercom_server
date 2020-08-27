@@ -100,6 +100,11 @@ export abstract class NodeMessageHandler extends EventEmitter {
     abstract send(msg: string): boolean;
 }
 
+let test = Object.assign(() => {}, { 
+    test: 55,
+    other: "bla"
+});
+
 export abstract class Connection extends EventEmitter {
 
     abstract begin(): void;
