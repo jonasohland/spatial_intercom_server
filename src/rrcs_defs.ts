@@ -1,4 +1,3 @@
-import {lchmodSync} from 'fs';
 import _ from 'lodash';
 
 export interface Port {
@@ -39,18 +38,17 @@ export interface XPSyncModifySlavesMessage {
 export enum CrosspointSyncType {
     SINGLE,
     WILDCARD_SRC,
-    WILDCARD_DST,
-    WILDCARD_RANGE_SRC,
-    WILDCARD_RANGE_DST
+    WILDCARD_DST
 }
 
 export interface CrosspointSync {
     state: boolean;
     vol: number;
     // TODO: sync types
-    // type: CrosspointSyncType;
+    type: CrosspointSyncType;
     master: CrosspointVolumeSource;
     slaves: CrosspointVolumeTarget[];
+    exclude: Crosspoint[];
 }
 
 export function isLoopbackXP(xp: Crosspoint)
@@ -58,6 +56,20 @@ export function isLoopbackXP(xp: Crosspoint)
     return xp.Source.Port === xp.Destination.Port
            && xp.Source.Node === xp.Destination.Node
            && xp.Source.IsInput != xp.Destination.IsInput;
+}
+
+export function getLoopbackXPForWildcard(xp: Crosspoint): Crosspoint
+{
+    if (isWildcardPort(xp.Source))
+        return {
+            Source : _.cloneDeep(xp.Destination),
+            Destination : _.cloneDeep(xp.Destination)
+        };
+    else
+        return {
+            Source : _.cloneDeep(xp.Source),
+            Destination : _.cloneDeep(xp.Source)
+        };
 }
 
 export function portEqual(lhs: Port, rhs: Port)

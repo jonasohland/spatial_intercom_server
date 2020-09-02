@@ -168,6 +168,8 @@ export class AdvancedBinauralDecoder extends NativeNode {
         }
         this.remote.set('mute', false);
         this.remote.set('xtc', this._xtc);
+
+        this.remote.on('cbcount', (cnt) => console.log(cnt));
     }
 
     constructor(name: string, order: number, headtracker_id: number, xtc: XTCSettings)

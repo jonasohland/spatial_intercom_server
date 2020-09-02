@@ -9,6 +9,7 @@ import {
     Crosspoint,
     CrosspointState,
     CrosspointSync,
+    CrosspointSyncType,
     CrosspointVolumeSource,
     CrosspointVolumeSourceState,
     CrosspointVolumeTarget,
@@ -54,7 +55,7 @@ export interface ArtistState {
     gateway: boolean, artist: boolean, artist_nodes: ArtistNodeInfo[]
 }
 
-interface ArtistNodeInfo {
+export interface ArtistNodeInfo {
     id: number, ports: ArtistPortInfo[]
 }
 
@@ -628,10 +629,23 @@ export class RRCSService extends RRCSServer {
         }
     }
 
-    newXPSync(master: CrosspointVolumeSource, slaves: CrosspointVolumeTarget[])
+    newXPSync(master: CrosspointVolumeSource, slaves: CrosspointVolumeTarget[],
+              excluded?: Crosspoint[])
     {
-        let id           = xpvtid(master);
-        this._synced[id] = { vol : 230, state : false, master, slaves };
+        let id = xpvtid(master);
+
+        this._synced[id] = {
+            vol : 230,
+            state : false,
+            master,
+            slaves,
+            type : sourcePortIsWildcard(master.xp)
+                       ? CrosspointSyncType.WILDCARD_SRC
+                       : (destinationPortIsWildcard(master.xp)
+                              ? CrosspointSyncType.WILDCARD_DST
+                              : CrosspointSyncType.SINGLE),
+            exclude : excluded || []
+        };
 
         if (this._gateway_online) {
             this.addToXPVolNotifyRegistry([ master.xp ])
@@ -685,7 +699,7 @@ export class RRCSService extends RRCSServer {
                         await this._try_kill_xp(slave.xp);
                 }
             }
-            await this.removeFromXPVolNotifyRegistry([sync.master.xp]);
+            await this.removeFromXPVolNotifyRegistry([ sync.master.xp ]);
         }
     }
 
@@ -719,20 +733,28 @@ export class RRCSService extends RRCSServer {
 
     async onArtistOnline()
     {
-        this.refreshAllXPs().then(() => {
-            this.emit('config-changed');
-        }).catch(err => {
-            log.error(`Failed to refresh all XPs after artist config change: ${err}`);
-        });
+        this.refreshAllXPs()
+            .then(() => {
+                this.emit('config-changed');
+            })
+            .catch(err => {
+                log.error(
+                    `Failed to refresh all XPs after artist config change: ${
+                        err}`);
+            });
     }
 
     onArtistConfigurationChanged(): void
     {
-        this.refreshAllXPs().then(() => {
-            this.emit('config-changed');
-        }).catch(err => {
-            log.error(`Failed to refresh all XPs after artist config change: ${err}`);
-        });
+        this.refreshAllXPs()
+            .then(() => {
+                this.emit('config-changed');
+            })
+            .catch(err => {
+                log.error(
+                    `Failed to refresh all XPs after artist config change: ${
+                        err}`);
+            });
     }
 
     onXpValueChanged(crosspoint: Crosspoint, single: number, conf: number)
@@ -757,8 +779,8 @@ export class RRCSService extends RRCSServer {
         for (let xpstate of xps) {
 
             // ignore the Sidetone/Loopback XP
-            if (isLoopbackXP(xpstate.xp))
-                continue;
+            // if (isLoopbackXP(xpstate.xp))
+            //     continue;
 
             this.trySyncCrosspointForMaster(
                 xpvtid({ xp : xpstate.xp, conf : false }), xpstate, updated);
@@ -867,9 +889,10 @@ export class RRCSService extends RRCSServer {
                 Source : sync.master.xp.Source,
                 Destination : sync.master.xp.Source
             });
-            wildcard_actives.push(
-                ...xps.filter(xp => portEqual(xp.Source, sync.master.xp.Source)
-                                    && !isLoopbackXP(xp)));
+            wildcard_actives.push(...xps.filter(
+                xp => portEqual(xp.Source, sync.master.xp.Source)
+                      && sync.exclude.filter(excl => xpEqual(excl, xp)).length
+                             == 0));
         }
 
         if (sourcePortIsWildcard(sync.master.xp)) {
@@ -880,7 +903,8 @@ export class RRCSService extends RRCSServer {
 
             wildcard_actives.push(...xps.filter(
                 xp => portEqual(xp.Destination, sync.master.xp.Destination)
-                      && !isLoopbackXP(xp)));
+                      && sync.exclude.filter(excl => xpEqual(excl, xp)).length
+                             == 0));
         }
 
         if (wildcard_actives.length) {

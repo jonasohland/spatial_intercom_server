@@ -1,6 +1,6 @@
 import {ValidateFunction} from 'ajv';
 
-import {Connection, NodeIdentification, Requester} from './communication';
+import {Connection, NodeIdentification, Requester, NODE_TYPE} from './communication';
 import {
     ManagedNodeStateMapRegister,
     ManagedNodeStateObject,
@@ -10,7 +10,7 @@ import {
 } from './core';
 import * as Logger from './log';
 import {
-    ArtistState,
+    ArtistState, ArtistNodeInfo,
 
 } from './rrcs';
 import {
@@ -220,6 +220,11 @@ class RRCSNodeModule extends NodeModule {
         }
     }
 
+    artistNodes()
+    {
+        return this._cached.artist_nodes;
+    }
+
     start(remote: Connection)
     {
         this.rrcs = remote.getRequester('rrcs');
@@ -389,10 +394,29 @@ export class RRCSServerModule extends ServerModule {
 
     joined(socket: SocketIO.Socket, topic: string)
     {
+        if (topic === 'artist-nodes')
+            this._update_webif_room(socket);
     }
 
     left(socket: SocketIO.Socket, topic: string)
     {
+    }
+
+    _update_webif_room(socket?: SocketIO.Socket)
+    {
+        let anodes = <ArtistNodeInfo[]> [];
+
+        for (let node of <RRCSNode[]> this.server.nodes(NODE_TYPE.RRCS_NODE)) {
+            for (let anode of node.rrcs.artistNodes()) {
+                if (anodes.findIndex(n => n.id === anode.id) == -1)
+                    anodes.push(anode);
+            }
+        }
+
+        if (socket)
+            socket.emit('rrcs.artist-nodes', anodes);
+        else
+            this.publish('artist-nodes', 'rrcs.artist-nodes', anodes);
     }
 }
 

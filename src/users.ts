@@ -24,6 +24,8 @@ import {
     XTCSettings
 } from './users_defs';
 import {ensurePortTypeEnum} from './util';
+import { ValidateFunction } from 'ajv';
+import * as Validation from './validation';
 
 const log = Logger.get('USERSM');
 
@@ -232,7 +234,7 @@ export class NodeUsersManager extends NodeModule {
 
         let userdata = user.get();
 
-        if (userdata.room != null)
+        if (userdata.room != null && userdata.room.length)
             newinput.room = userdata.room;
 
         userdata.inputs.push(newinput.id);
@@ -381,9 +383,12 @@ export class NodeUsersManager extends NodeModule {
 
 export class UsersManager extends ServerModule {
 
+    validate_userdata: ValidateFunction;
+
     constructor()
     {
         super('users');
+        this.validate_userdata = Validation.getValidator(Validation.Validators.UserData);
     }
 
     joined(socket: SocketIO.Socket, topic: string)
@@ -443,12 +448,19 @@ export class UsersManager extends ServerModule {
         this.handleWebInterfaceEvent(
             'add.user',
             (socket: SocketIO.Socket, node: DSPNode, data: UserData) => {
-                if (data.channel != null) {
-                    node.users.addUser(data);
+
+                if (!this.validate_userdata(data)) {
+                    this.webif.broadcastError(node.name(), `Could not add new user '${data.name}': Missing data.`);
+                    log.error("Missing: "); 
+                    if (this.validate_userdata.errors)
+                        this.validate_userdata.errors.forEach(err => {
+                            log.error("    " + err.dataPath + "  " + err.message);
+                        })
+                    return;
                 }
-                else
-                    this.webif.broadcastWarning(
-                        node.name(), 'Could not add user: Missing data');
+
+                node.users.addUser(data);
+                this.webif.broadcastNodeNotification(node, `Added new user '${data.name}'`);
             });
 
         this.handleWebInterfaceEvent(
