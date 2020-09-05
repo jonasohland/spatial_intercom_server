@@ -1,6 +1,11 @@
 import {ValidateFunction} from 'ajv';
 
-import {Connection, NodeIdentification, Requester, NODE_TYPE} from './communication';
+import {
+    Connection,
+    NODE_TYPE,
+    NodeIdentification,
+    Requester
+} from './communication';
 import {
     ManagedNodeStateMapRegister,
     ManagedNodeStateObject,
@@ -10,7 +15,8 @@ import {
 } from './core';
 import * as Logger from './log';
 import {
-    ArtistState, ArtistNodeInfo,
+    ArtistNodeInfo,
+    ArtistState,
 
 } from './rrcs';
 import {
@@ -22,7 +28,9 @@ import {
     xpEqual,
     XPSyncModifySlavesMessage,
     xpvtid,
+    xpVtEqual,
 } from './rrcs_defs';
+import {parsePorts} from './rrcs_lex';
 import {ignore} from './util';
 import * as Validation from './validation';
 
@@ -129,6 +137,7 @@ class RRCSNodeModule extends NodeModule {
     syncs: SyncList;
     _xpstates: Record<string, boolean>;
     _cached: ArtistState;
+    _config_syncs: CrosspointSync[] = [];
 
     constructor()
     {
@@ -296,6 +305,89 @@ class RRCSNodeModule extends NodeModule {
         this._reload_artist_state();
     }
 
+    async _refresh_config_syncs()
+    {
+        let ports = [];
+
+        for (let node of this._cached.artist_nodes) {
+            for (let port of node.ports)
+                ports.push(port);
+        }
+
+        let newsyncs = parsePorts(ports);
+
+        for (let nsync of newsyncs) {
+
+            let local_idx = this._config_syncs.findIndex(
+                syn => xpvtid(syn.master) === xpvtid(nsync.master));
+
+            if (local_idx == -1) {
+                this._config_syncs.push(nsync);
+                log.verbose(`Add new XPSync Master ${xpvtid(nsync.master)}`)
+                try {
+                    let usersync
+                        = this.syncs.getSyncForMaster(xpvtid(nsync.master));
+                    if (usersync) {
+                        log.info(
+                            `Overwrite user defined XPSync with sync from config. ID: ${
+                                xpvtid(nsync.master)}`);
+                        await this.syncs.removeMaster(xpvtid(nsync.master));
+                    }
+                    await this.rrcs.set('add-xp-sync', nsync);
+                }
+                catch (err) {
+                    log.error('Error while adding XPSync from config ' + err);
+                }
+            }
+            else {
+                let localsync = this._config_syncs[local_idx];
+                if (localsync) {
+                    for (let slave of nsync.slaves) {
+                        let local_sl_index = localsync.slaves.findIndex(sl => xpVtEqual(sl, slave))
+                        if (local_sl_index == -1) {
+                            log.verbose(`Add slave ${__xpid(slave.xp)} to ${xpvtid(localsync.master)}`);
+                            localsync.slaves.push(slave);
+                            await this.rrcs.set('xp-sync-add-slaves', <XPSyncModifySlavesMessage> {
+                                master: xpvtid(localsync.master),
+                                slaves: [ slave ]
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        for (let osync of this._config_syncs) {
+            let nidx = newsyncs.findIndex(syn => xpvtid(syn.master) === xpvtid(osync.master));
+            if (nidx != -1) {
+                let nsync = newsyncs[nidx];
+                for (let slave of osync.slaves) {
+                    try {
+                        let nsync_slidx = nsync.slaves.findIndex(sl => xpVtEqual(sl, slave));
+                        if (nsync_slidx == -1) {
+                            log.verbose(`Remove slave ${__xpid(slave.xp)} from master ${xpvtid(osync.master)}`);
+                            await this.rrcs.set('xp-sync-remove-slaves', <XPSyncModifySlavesMessage> {
+                                master: xpvtid(osync.master),
+                                slaves: [ slave ]
+                            });
+                        }
+                    } catch (err) {
+                        log.error(`Could not remove slave for ${xpvtid(osync.master)}: ${err}`);
+                    }
+                }
+            } else { 
+                try {
+                    log.verbose(`Remove XPSync master ${xpvtid(osync.master)}`);
+                    await this.rrcs.set('remove-xp-sync', xpvtid(osync.master));
+                    let idx = this._config_syncs.findIndex(s => xpvtid(s.master) == xpvtid(osync.master));
+                    this._config_syncs.splice(idx, 1);
+                } catch (err) {
+                    log.error(`Could not remove old sync ${xpvtid(osync.master)}: ${err}`);
+                }
+            }
+        }
+    }
+
     _xp_states_changed(msg: any)
     {
         let states = <CrosspointVolumeSourceState[]>msg.data;
@@ -317,6 +409,7 @@ class RRCSNodeModule extends NodeModule {
                 this.publish(
                     'all', `${this.myNodeId()}.rrcs.artists`, this._cached);
             })
+            .then(() => this._refresh_config_syncs())
             .catch(err => {
                 log.error(`Could not load artist state: ${err}`);
             })
@@ -404,9 +497,9 @@ export class RRCSServerModule extends ServerModule {
 
     _update_webif_room(socket?: SocketIO.Socket)
     {
-        let anodes = <ArtistNodeInfo[]> [];
+        let anodes = <ArtistNodeInfo[]>[];
 
-        for (let node of <RRCSNode[]> this.server.nodes(NODE_TYPE.RRCS_NODE)) {
+        for (let node of <RRCSNode[]>this.server.nodes(NODE_TYPE.RRCS_NODE)) {
             for (let anode of node.rrcs.artistNodes()) {
                 if (anodes.findIndex(n => n.id === anode.id) == -1)
                     anodes.push(anode);

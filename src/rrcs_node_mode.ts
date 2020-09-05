@@ -14,10 +14,10 @@ class RRCSMessageInterceptor extends NodeMessageInterceptor {
 
     rrcs: RRCSService;
 
-    constructor(rrcs_host: string, rrcs_port: number)
+    constructor(options: any)
     {
         super();
-        this.rrcs = new RRCSService(rrcs_host, rrcs_port);
+        this.rrcs = new RRCSService(options);
 
         this.rrcs.onAny((evt: string, arg) => {
             this.event(evt, arg);
@@ -67,7 +67,7 @@ export default function(options: any) {
     let handler = new DummyMessageHandler();
     let client = new SINodeWSClient(config, handler, type);
     const state = new NodeDataStorage(config, options, type);
-    const rrcs = new RRCSMessageInterceptor(config.rrcs, 8193);
+    const rrcs = new RRCSMessageInterceptor(config);
     client.addWSInterceptor(state);
     client.addWSInterceptor(rrcs);
 }

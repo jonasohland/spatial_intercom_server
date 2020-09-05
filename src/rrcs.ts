@@ -1,5 +1,6 @@
 import {EventEmitter2} from 'eventemitter2';
 import * as fs from 'fs';
+import {performance as perf} from 'perf_hooks';
 import xmlrpc from 'xmlrpc';
 
 import {configFileDir} from './files';
@@ -16,12 +17,11 @@ import {
     destinationPortIsWildcard,
     isLoopbackXP,
     isWildcardXP,
+    Port,
     portEqual,
     sourcePortIsWildcard,
-    withDestinationAsDestinationWildcard,
     withDestinationeAsSourceWildcard,
     withSourceAsDestinationWildcard,
-    withSourceAsSourceWildcard,
     xpEqual,
     XPSyncModifySlavesMessage,
     xpVtEqual,
@@ -36,7 +36,7 @@ function logArtistCall(method: string, params: number)
     artlog.debug(`Call artist method ${method} with ${params} args`);
 }
 
-interface ArtistPortInfo {
+export interface ArtistPortInfo {
     Input: boolean
     KeyCount: number
     Label: string
@@ -47,6 +47,8 @@ interface ArtistPortInfo {
     PageCount: number
     Port: number
     PortType: string
+    Subtitle?: string
+    Alias?: string
     HasSecondChannel?: boolean
 }
 
@@ -136,6 +138,11 @@ function crosspointToParams(xp: Crosspoint, net: number)
     ];
 }
 
+function portToParams(p: Port, net: number)
+{
+    return [ net - 1, p.Node, p.Port ]
+}
+
 function crosspointFromParams(params: any[]): Crosspoint
 {
     return {
@@ -173,19 +180,28 @@ export abstract class RRCSServer extends EventEmitter2 {
     abstract xpsToListenTo(): Crosspoint[];
     abstract async onArtistOnline(): Promise<void>;
 
-    constructor(rrcs_host: string, rrcs_port: number)
+    constructor(options: any)
     {
         super();
         log.info('Server start listen');
 
+        if (options.interface == null) {
+            log.error('\'interface\' option has to be specified');
+            process.exit(1);
+        }
+
+        this._local_ip = options.interface;
+        log.info(`Using local interface ${this._local_ip}`);
+
         this._srv = xmlrpc.createServer(
-            { host : '0.0.0.0', port : this._local_port }, () => {
+            { host : this._local_ip, port : this._local_port }, () => {
                 log.info('RRCS Server listening');
 
                 this._cl = xmlrpc.createClient(
-                    { host : rrcs_host, port : rrcs_port });
+                    { host : options.rrcs, port : options.rrcs_port });
 
-                log.info(`Client connecting to ${rrcs_host}:${rrcs_port}`);
+                log.info(`Client connecting to ${options.rrcs}:${
+                    options.rrcs_port}`);
 
                 this._load_cached();
                 this._ping_artist();
@@ -261,6 +277,24 @@ export abstract class RRCSServer extends EventEmitter2 {
         };
     }
 
+    async getObjectPropertyNames(objectid: number)
+    {
+        return this._perform_method_call(
+            'GetObjectPropertyNames', this._get_trs_key(), objectid);
+    }
+
+    async getObjectProperty(id: number, name: string)
+    {
+        return this._perform_method_call(
+            'GetObjectProperty', this._get_trs_key(), id, name);
+    }
+
+    async getPortAlias(port: Port)
+    {
+        return this._perform_method_call(
+            'GetPortAlias', this._get_trs_key(), ...portToParams(port, 2));
+    }
+
     async getGatewayState()
     {
         return this._perform_method_call(
@@ -300,6 +334,10 @@ export abstract class RRCSServer extends EventEmitter2 {
             (single == null) ? 'single'
                              : (single ? 'single' : 'conf')}) ${__xpid(xp)} - ${
             ((volume === 0) ? 'mute' : ((volume - 230) / 2) + 'dB')}`);
+
+        console.log(xp);
+        console.log(single);
+        console.log(conf);
 
         this._perform_method_call(
             'SetXPVolume', this._get_trs_key(), ...crosspointToParams(xp, 2),
@@ -358,15 +396,19 @@ export abstract class RRCSServer extends EventEmitter2 {
 
     async _perform_method_call(method: string, ...params: any[])
     {
+        let timet = perf.now();
         logArtistCall(method, params.length);
         return new Promise(
             (res,
              rej) => { this._cl.methodCall(method, params, (err, value) => {
-                if (err)
+                let time_fin = perf.now() - timet;
+                if (err) {
+                    log.debug(`Error after ${time_fin} ms`)
                     rej(err);
+                }
                 else {
-                    artlog.debug(
-                        `Call to ${method} returned with ${value.length} args`);
+                    artlog.debug(`Call to ${method} returned with ${
+                        value.length} args after ${time_fin} ms`);
                     res(value);
                 }
             }) });
@@ -507,11 +549,25 @@ export abstract class RRCSServer extends EventEmitter2 {
 
         let ports = data[1];
         this._nodes.forEach(node => node.destroy());
-        this._nodes = [];
+
+        for (let p of ports) {
+            try {
+                p.Subtitle = (<any>await (this.getObjectProperty(
+                                  p.ObjectID, 'Subtitle')))
+                                 .Subtitle
+                p.Alias = (<any>await this.getPortAlias(p))[2];
+            }
+            catch (err) {
+                log.error(
+                    `Could not retrieve subtitle for port ${p.Name}: ${err}`);
+            }
+        }
+
         ports.forEach((port: ArtistPortInfo) => {
             // console.log(`input: ${port.Input} output: ${port.Output} -
             // ${port.Name}`);
             let node = this.getArtistNode(port.Node);
+
             if (node)
                 node.addPort(port);
             else {
@@ -521,6 +577,7 @@ export abstract class RRCSServer extends EventEmitter2 {
                 new_node.addPort(port);
             }
         });
+
         fs.writeFileSync(`${configFileDir('nodestate')}/artistcache.json`,
                          JSON.stringify(this.getArtistState()));
     }
@@ -553,7 +610,8 @@ export abstract class RRCSServer extends EventEmitter2 {
 
 export class RRCSService extends RRCSServer {
 
-    _synced: Record<string, CrosspointSync> = {};
+    _synced_ex: Record<string, CrosspointSync> = {};
+    _synced: Record<string, CrosspointSync>    = {};
 
     xpsToListenTo(): Crosspoint[]
     {
@@ -779,20 +837,13 @@ export class RRCSService extends RRCSServer {
         for (let xpstate of xps) {
 
             // ignore the Sidetone/Loopback XP
-            // if (isLoopbackXP(xpstate.xp))
-            //     continue;
+            if (isLoopbackXP(xpstate.xp))
+                continue;
 
             this.trySyncCrosspointForMaster(
                 xpvtid({ xp : xpstate.xp, conf : false }), xpstate, updated);
             this.trySyncCrosspointForMaster(
                 xpvtid({ xp : xpstate.xp, conf : true }), xpstate, updated);
-
-            /* await this.trySyncCrosspointForWildcardMaster(
-                xpvtid({
-                    xp : withDestinationAsDestinationWildcard(xpstate.xp),
-                    conf : false
-                }),
-                xpstate, updated); */
 
             await this.trySyncCrosspointForWildcardMaster(
                 xpvtid({
@@ -807,13 +858,6 @@ export class RRCSService extends RRCSServer {
                     conf : false
                 }),
                 xpstate, updated);
-
-            /* await this.trySyncCrosspointForWildcardMaster(
-                xpvtid({
-                    xp : withSourceAsSourceWildcard(xpstate.xp),
-                    conf : false
-                }),
-                xpstate, updated); */
         }
         if (updated.length) {
             this.emit('xp-states-changed', updated);
@@ -889,10 +933,9 @@ export class RRCSService extends RRCSServer {
                 Source : sync.master.xp.Source,
                 Destination : sync.master.xp.Source
             });
-            wildcard_actives.push(...xps.filter(
-                xp => portEqual(xp.Source, sync.master.xp.Source)
-                      && sync.exclude.filter(excl => xpEqual(excl, xp)).length
-                             == 0));
+            wildcard_actives.push(
+                ...xps.filter(xp => portEqual(xp.Source, sync.master.xp.Source)
+                                    && !isLoopbackXP(xp)));
         }
 
         if (sourcePortIsWildcard(sync.master.xp)) {
@@ -903,8 +946,7 @@ export class RRCSService extends RRCSServer {
 
             wildcard_actives.push(...xps.filter(
                 xp => portEqual(xp.Destination, sync.master.xp.Destination)
-                      && sync.exclude.filter(excl => xpEqual(excl, xp)).length
-                             == 0));
+                      && !isLoopbackXP(xp)));
         }
 
         if (wildcard_actives.length) {
