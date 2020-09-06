@@ -57,11 +57,14 @@ export function merge(cmd_opts: commander.Command)
         rrcs_port?: number,
         rrcs_osc_host?: string,
         rrcs_osc_port?: number,
-        rrcs_server?: string
+        rrcs_server?: string,
+        failsense_input?: number,
+        failsense_output?: number
     } = {};
 
     if (!_config_file.network) _config_file.network = {};
     if (!_config_file.artist) _config_file.artist = {};
+    if (!_config_file.dsp) _config_file.dsp = {};
 
     let interface_: string
         = cmd_opts.interface || _config_file.network.interface;
@@ -78,6 +81,14 @@ export function merge(cmd_opts: commander.Command)
     output.rrcs_osc_host = cmd_opts.rrcsOscHost || _config_file.artist.rrcs_osc_host || '127.0.0.1';
     output.rrcs_osc_port = cmd_opts.rrcsOscPort || _config_file.artist.rrcs_osc_port || 9955;
     output.rrcs_osc_port = Number.parseInt(<any> output.rrcs_osc_port);
+
+    output.failsense_input = Number.parseInt(cmd_opts.failSenseInput || _config_file.dsp.failsense_input || 0);
+    output.failsense_output = Number.parseInt(cmd_opts.failSenseOutput || _config_file.dsp.failsense_output || 0);
+
+    if (output.failsense_input && output.failsense_output < 1) {
+        log.info(`Using failsave input ${output.failsense_input} as output channel`);
+        output.failsense_output = output.failsense_input;
+    }
 
     const netifs = os.networkInterfaces();
 

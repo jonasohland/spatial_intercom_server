@@ -30,6 +30,8 @@ program.command('node')
 .option('-R, --reset', 'reset this node before starting')
 .option('-D, --dsp-executable <executable>', 'specify where to look for the dsp executable')
 .option('-p, --port <port>')
+.option('--fail-sense-input <channel>', 'use this channel as fail sense input')
+.option('--fail-sense-output <channel>', 'use this channel as fail sense output')
 .option('-c, --config <config_file>', 'load this config file instead of the default one')
 .action(node_mode);
 
