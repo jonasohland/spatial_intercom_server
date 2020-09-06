@@ -24,10 +24,10 @@ export function _log_msg(msg: Message, input: boolean, forward: boolean = true)
     let ty = MessageMode[msg.mode];
 
     if (_.isObjectLike(msg.data))
-        log.verbose(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
+        log.debug(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
             ty}] -> [data truncated]`);
     else
-        log.verbose(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
+        log.debug(`Msg ${to_from} ${target}: [${msg.target} -> ${msg.field}] [${
             ty}] -> ${msg.data}${msg.err?`: ${msg.err}`:""}`);
 }
 

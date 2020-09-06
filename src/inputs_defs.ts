@@ -9,6 +9,7 @@ export interface NodeAudioInputDescription {
     default_roomencode: boolean;
     default_encodingorder: number;
     default_gain: number;
+    multich_count: number; 
 }
 
 
@@ -23,6 +24,7 @@ export function basicNodeAudioInputDescription(
         id : uniqueId(),
         default_roomencode : false,
         default_encodingorder : 3,
-        default_gain : 1.
+        default_gain : 1.,
+        multich_count: 1
     };
 }

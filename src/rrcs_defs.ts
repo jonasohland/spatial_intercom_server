@@ -93,7 +93,7 @@ export function xpVtEqual(
 
 export function __xpid(xp: Crosspoint)
 {
-    return `${xp.Source.Node}-${xp.Source.Port}-|${xp.Destination.Node}-${
+    return `${xp.Source.Node}.${xp.Source.Port}x${xp.Destination.Node}.${
         xp.Destination.Port}`
 }
 

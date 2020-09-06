@@ -1,16 +1,12 @@
-import {Channel} from './audio_devices';
 import {
     ManagedNodeStateListRegister,
     ManagedNodeStateObject,
     NodeModule,
     ServerModule
 } from './core';
-import {PortTypes} from './dsp_defs';
 import {DSPNode, DSPModuleNames} from './dsp_node';
 import {NodeAudioInputDescription} from './inputs_defs';
-import {SIDSPNode} from './instance';
 import * as Logger from './log';
-import WebInterface from './web_interface';
 
 const log = Logger.get('INP');
 

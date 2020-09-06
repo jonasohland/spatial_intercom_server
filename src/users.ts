@@ -81,6 +81,11 @@ export class SpatializedInput extends
         return this.data;
     }
 
+    findSource() 
+    {
+        return this.inputsModule.findInputForId(this.data.inputid);
+    }
+
     findSourceType()
     {
         let source = this.inputsModule.findInputForId(this.data.inputid);

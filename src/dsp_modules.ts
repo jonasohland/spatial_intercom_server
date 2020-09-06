@@ -172,7 +172,8 @@ export class AdvancedBinauralDecoder extends NativeNode {
         this.remote.on('cbcount', (cnt) => console.log(cnt));
     }
 
-    constructor(name: string, order: number, headtracker_id: number, xtc: XTCSettings)
+    constructor(name: string, order: number, headtracker_id: number,
+                xtc: XTCSettings)
     {
         super(name, 'advanced_binaural_decoder');
 
@@ -185,7 +186,7 @@ export class AdvancedBinauralDecoder extends NativeNode {
         this.addOutputBus(this._ref_out);
 
         this._htrk_id = headtracker_id;
-        this._xtc = xtc;
+        this._xtc     = xtc;
     }
 
     refIn()
@@ -547,7 +548,7 @@ export class SimpleUsersModule extends Module {
     constructor(user: User)
     {
         super();
-        this._usr = user;
+        this._usr         = user;
         this._xtcsettings = user.get().xtc;
     }
 
@@ -581,7 +582,8 @@ export class SimpleUsersModule extends Module {
     {
 
         this._decoder = new AdvancedBinauralDecoder(
-            this._usr.get().name, 3, this._usr.get().headtracker || -1, this._xtcsettings);
+            this._usr.get().name, 3, this._usr.get().headtracker || -1,
+            this._xtcsettings);
         this._decoder_id = graph.addNode(this._decoder);
 
         let spatializers = <SpatializationModule[]>graph.modules.filter(
@@ -621,12 +623,13 @@ export class SimpleUsersModule extends Module {
         if (output_con)
             graph.addConnection(output_con);
         else
-            log.error("Could not connect binaural signal to graph output");
+            log.error('Could not connect binaural signal to graph output');
 
         if (output_con_ref)
             graph.addConnection(output_con_ref);
         else
-            log.error("Could not connect stereo reference output to graph output");
+            log.error(
+                'Could not connect stereo reference output to graph output');
     }
 
     destroy(graph: Graph): void
@@ -947,10 +950,18 @@ export class MultiSpatializerModule extends SpatializationModule {
         if (this._spatializer_node)
             this._spatializer_node.pan(this._params_cached);
 
-        let mainInputConnection = graph.graphRootBus().connectIdx(
-            node.getMainInputBus(), this._input.findSourceChannel());
+        let source = this._input.findSource();
 
-        graph.addConnection(mainInputConnection);
+        if (source) {
+            for (let i = 0; i < source.get().multich_count; ++i) {
+
+                let mainInputConnection = graph.graphRootBus().connectIdx(
+                    node.getMainInputBus(), this._input.findSourceChannel() + node.getMainInputBus().channelCount() * i);
+
+                if (mainInputConnection)
+                    graph.addConnection(mainInputConnection);
+            }
+        }
     }
 
 

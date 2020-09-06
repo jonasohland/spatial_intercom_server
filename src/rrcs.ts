@@ -185,12 +185,12 @@ export abstract class RRCSServer extends EventEmitter2 {
         super();
         log.info('Server start listen');
 
-        if (options.interface == null) {
-            log.error('\'interface\' option has to be specified');
+        if (options.rrcs_server == null) {
+            log.error('\'server-interface\' option has to be specified');
             process.exit(1);
         }
 
-        this._local_ip = options.interface;
+        this._local_ip = options.rrcs_server;
         log.info(`Using local interface ${this._local_ip}`);
 
         this._srv = xmlrpc.createServer(
@@ -330,14 +330,10 @@ export abstract class RRCSServer extends EventEmitter2 {
     async setXPVolume(xp: Crosspoint, volume: number, single?: boolean,
                       conf?: boolean)
     {
-        log.debug(`Set XP volume (${
+        log.verbose(`Set XP volume (${
             (single == null) ? 'single'
                              : (single ? 'single' : 'conf')}) ${__xpid(xp)} - ${
             ((volume === 0) ? 'mute' : ((volume - 230) / 2) + 'dB')}`);
-
-        console.log(xp);
-        console.log(single);
-        console.log(conf);
 
         this._perform_method_call(
             'SetXPVolume', this._get_trs_key(), ...crosspointToParams(xp, 2),
@@ -382,14 +378,14 @@ export abstract class RRCSServer extends EventEmitter2 {
 
     async setXP(xp: Crosspoint)
     {
-        log.debug(`Set XP ${__xpid(xp)}`);
+        log.verbose(`Set XP ${__xpid(xp)}`);
         return this._perform_method_call(
             'SetXp', this._get_trs_key(), ...crosspointToParams(xp, 2));
     }
 
     async killXP(xp: Crosspoint)
     {
-        log.debug(`Kill XP ${__xpid(xp)}`);
+        log.verbose(`Kill XP ${__xpid(xp)}`);
         return this._perform_method_call(
             'KillXp', this._get_trs_key(), ...crosspointToParams(xp, 2));
     }
@@ -836,6 +832,20 @@ export class RRCSService extends RRCSServer {
         let updated = <CrosspointVolumeSourceState[]>[];
         for (let xpstate of xps) {
 
+            if (xpstate.state) {
+                let conf_vol_master = this._find_volume_master(xpstate.xp, false);
+                let sing_vol_master = this._find_volume_master(xpstate.xp, true);
+
+                try {
+                    if (conf_vol_master)
+                        await this.setXPVolume(xpstate.xp, conf_vol_master.vol, false, true);
+                    if (sing_vol_master)
+                        await this.setXPVolume(xpstate.xp, sing_vol_master.vol, true, false);
+                } catch (err) {
+                    log.error(`Could not set slave XP volume: ${err}`);
+                }
+            }
+
             // ignore the Sidetone/Loopback XP
             if (isLoopbackXP(xpstate.xp))
                 continue;
@@ -1042,6 +1052,16 @@ export class RRCSService extends RRCSServer {
         });
     }
 
+    private _find_volume_master(xp: Crosspoint, single: boolean) {
+        for (let sync_key of Object.keys(this._synced)) {
+            let sync = this._synced[sync_key];
+            for (let slave of sync.slaves) {
+                if (slave.single === single && xpEqual(slave.xp, xp))
+                    return sync
+            }
+        }
+    }
+
     private _clear_all_xpstates()
     {
         for (let key of Object.keys(this._synced))
@@ -1058,14 +1078,14 @@ export class RRCSService extends RRCSServer {
     {
         let isset = await this.getXpStatus(xp);
         if (isset)
-            log.debug(`XP ${__xpid(xp)} already set`);
+            log.verbose(`XP ${__xpid(xp)} already set`);
         else
             await this.setXP(xp);
     }
 
     private async _try_kill_xp(xp: Crosspoint)
     {
-        log.debug(`Try killing XP ${__xpid(xp)}`);
+        log.verbose(`Try killing XP ${__xpid(xp)}`);
         let still_set_by = <string[]>[];
 
         for (let masterid of Object.keys(this._synced)) {
@@ -1091,9 +1111,9 @@ export class RRCSService extends RRCSServer {
         }
 
         if (still_set_by.length) {
-            log.debug(`Wont kill XP because it is still set by ${
+            log.verbose(`Wont kill XP because it is still set by ${
                 still_set_by.length} masters`);
-            still_set_by.forEach(mid => log.debug(`    still set by: ${mid}`));
+            still_set_by.forEach(mid => log.verbose(`    still set by: ${mid}`));
         }
         else {
             try {

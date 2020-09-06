@@ -56,7 +56,8 @@ export function merge(cmd_opts: commander.Command)
         rrcs?: string,
         rrcs_port?: number,
         rrcs_osc_host?: string,
-        rrcs_osc_port?: number 
+        rrcs_osc_port?: number,
+        rrcs_server?: string
     } = {};
 
     if (!_config_file.network) _config_file.network = {};
@@ -71,6 +72,8 @@ export function merge(cmd_opts: commander.Command)
 
     output.rrcs = cmd_opts.gateway || _config_file.artist.gateway || '127.0.0.1';
     output.rrcs_port = cmd_opts.gatewayPort || _config_file.artist.port || 8193;
+
+    output.rrcs_server = cmd_opts.serverInterface || _config_file.artist.server || '127.0.0.1';
 
     output.rrcs_osc_host = cmd_opts.rrcsOscHost || _config_file.artist.rrcs_osc_host || '127.0.0.1';
     output.rrcs_osc_port = cmd_opts.rrcsOscPort || _config_file.artist.rrcs_osc_port || 9955;

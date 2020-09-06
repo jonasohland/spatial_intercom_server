@@ -27,8 +27,8 @@ import {
     CrosspointVolumeTarget,
     xpEqual,
     XPSyncModifySlavesMessage,
-    xpvtid,
     xpVtEqual,
+    xpvtid,
 } from './rrcs_defs';
 import {parsePorts} from './rrcs_lex';
 import {ignore} from './util';
@@ -257,7 +257,7 @@ class RRCSNodeModule extends NodeModule {
     joined(socket: SocketIO.Socket, topic: string)
     {
         socket.emit(`${this.myNodeId()}.rrcs.artists`, this._cached);
-        socket.emit(`${this.myNodeId()}.rrcs.syncs`, this.syncs.allSyncs());
+        this._webif_update_sync_list(socket);
     }
 
     left(socket: SocketIO.Socket, topic: string)
@@ -271,6 +271,7 @@ class RRCSNodeModule extends NodeModule {
     _artist_online()
     {
         this._server._webif.broadcastNotification('RRCS', 'Artist online');
+        this._config_syncs.length = 0;
         this._reload_artist_state();
         this._cached.artist = true;
         this._webif_update_connection();
@@ -279,7 +280,8 @@ class RRCSNodeModule extends NodeModule {
     _artist_offline()
     {
         this._server._webif.broadcastError('RRCS', 'Artist offline');
-        this._cached.artist = false;
+        this._config_syncs.length = 0;
+        this._cached.artist       = false;
         this._webif_update_connection();
     }
 
@@ -287,14 +289,16 @@ class RRCSNodeModule extends NodeModule {
     {
         this._server._webif.broadcastNotification(
             'RRCS', 'RRCS Gateway online');
-        this._cached.gateway = true;
+        this._config_syncs.length = 0;
+        this._cached.gateway      = true;
         this._webif_update_connection();
     }
 
     _gateway_offline()
     {
         this._server._webif.broadcastError('RRCS', 'RRCS Gateway offline');
-        this._cached.gateway = false;
+        this._config_syncs.length = 0;
+        this._cached.gateway      = false;
         this._webif_update_connection();
     }
 
@@ -343,14 +347,19 @@ class RRCSNodeModule extends NodeModule {
                 let localsync = this._config_syncs[local_idx];
                 if (localsync) {
                     for (let slave of nsync.slaves) {
-                        let local_sl_index = localsync.slaves.findIndex(sl => xpVtEqual(sl, slave))
-                        if (local_sl_index == -1) {
-                            log.verbose(`Add slave ${__xpid(slave.xp)} to ${xpvtid(localsync.master)}`);
+                        let local_sl_index = localsync.slaves.findIndex(
+                            sl => xpVtEqual(sl, slave))
+                        if (local_sl_index == -1)
+                        {
+                            log.verbose(`Add slave ${__xpid(slave.xp)} to ${
+                                xpvtid(localsync.master)}`);
                             localsync.slaves.push(slave);
-                            await this.rrcs.set('xp-sync-add-slaves', <XPSyncModifySlavesMessage> {
-                                master: xpvtid(localsync.master),
-                                slaves: [ slave ]
-                            });
+                            await this.rrcs.set(
+                                'xp-sync-add-slaves',
+                                <XPSyncModifySlavesMessage>{
+                                    master : xpvtid(localsync.master),
+                                    slaves : [ slave ]
+                                });
                         }
                     }
                 }
@@ -358,31 +367,43 @@ class RRCSNodeModule extends NodeModule {
         }
 
         for (let osync of this._config_syncs) {
-            let nidx = newsyncs.findIndex(syn => xpvtid(syn.master) === xpvtid(osync.master));
+            let nidx = newsyncs.findIndex(syn => xpvtid(syn.master)
+                                                 === xpvtid(osync.master));
             if (nidx != -1) {
                 let nsync = newsyncs[nidx];
                 for (let slave of osync.slaves) {
                     try {
-                        let nsync_slidx = nsync.slaves.findIndex(sl => xpVtEqual(sl, slave));
+                        let nsync_slidx = nsync.slaves.findIndex(
+                            sl => xpVtEqual(sl, slave));
                         if (nsync_slidx == -1) {
-                            log.verbose(`Remove slave ${__xpid(slave.xp)} from master ${xpvtid(osync.master)}`);
-                            await this.rrcs.set('xp-sync-remove-slaves', <XPSyncModifySlavesMessage> {
-                                master: xpvtid(osync.master),
-                                slaves: [ slave ]
-                            });
+                            log.verbose(
+                                `Remove slave ${__xpid(slave.xp)} from master ${
+                                    xpvtid(osync.master)}`);
+                            await this.rrcs.set(
+                                'xp-sync-remove-slaves',
+                                <XPSyncModifySlavesMessage>{
+                                    master : xpvtid(osync.master),
+                                    slaves : [ slave ]
+                                });
                         }
-                    } catch (err) {
-                        log.error(`Could not remove slave for ${xpvtid(osync.master)}: ${err}`);
+                    }
+                    catch (err) {
+                        log.error(`Could not remove slave for ${
+                            xpvtid(osync.master)}: ${err}`);
                     }
                 }
-            } else { 
+            }
+            else {
                 try {
                     log.verbose(`Remove XPSync master ${xpvtid(osync.master)}`);
                     await this.rrcs.set('remove-xp-sync', xpvtid(osync.master));
-                    let idx = this._config_syncs.findIndex(s => xpvtid(s.master) == xpvtid(osync.master));
+                    let idx = this._config_syncs.findIndex(
+                        s => xpvtid(s.master) == xpvtid(osync.master));
                     this._config_syncs.splice(idx, 1);
-                } catch (err) {
-                    log.error(`Could not remove old sync ${xpvtid(osync.master)}: ${err}`);
+                }
+                catch (err) {
+                    log.error(`Could not remove old sync ${
+                        xpvtid(osync.master)}: ${err}`);
                 }
             }
         }
@@ -420,10 +441,20 @@ class RRCSNodeModule extends NodeModule {
         this.rrcs.set('xp-syncs', this.syncs.allSyncs())
     }
 
-    _webif_update_sync_list()
+    _webif_update_sync_list(socket?: SocketIO.Socket)
     {
-        this.publish(
-            'all', `${this.myNodeId()}.rrcs.syncs`, this.syncs.allSyncs());
+        let list = [];
+
+        for (let s of this._config_syncs)
+            list.push(s);
+
+        for (let s of this.syncs.allSyncs())
+            list.push(s);
+
+        if (socket)
+            socket.emit(`${this.myNodeId()}.rrcs.syncs`, list);
+        else
+            this.publish('all', `${this.myNodeId()}.rrcs.syncs`, list);
     }
 
     _webif_update_connection()
