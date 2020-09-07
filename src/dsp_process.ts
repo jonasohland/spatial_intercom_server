@@ -9,10 +9,9 @@ import {
     Connection,
     Message,
     NodeMessageInterceptor,
-    Requester,
-    SIServerWSSession
+    Requester
 } from './communication'
-import {Node, NodeModule} from './core';
+import {NodeModule} from './core';
 import {DSPNodeStats} from './dsp_defs';
 import {Graph} from './dsp_graph';
 import {DSPModuleNames} from './dsp_node';
@@ -248,7 +247,8 @@ export class DSPController extends NodeModule {
                 this._fail_sense = <any>msg.data;
             })
             .catch(err => {
-                log.error('Could not retreive fail sense settings from node ' + err);
+                log.error('Could not retreive fail sense settings from node '
+                          + err);
             });
 
         log.info('Graph service running');
@@ -300,7 +300,8 @@ export class DSPController extends NodeModule {
                 if (this._fail_sense.input > 0 && this._fail_sense.output > 0) {
                     let failsense_connection
                         = this._graph.graphRootBus().connectIdxNIdx(
-                            this._graph.graphExitBus(), this._fail_sense.input - 1, 1,
+                            this._graph.graphExitBus(),
+                            this._fail_sense.input - 1, 1,
                             this._fail_sense.output - 1);
 
                     if (failsense_connection)
@@ -317,10 +318,10 @@ export class DSPController extends NodeModule {
                         .reduce((prev, current) => prev + current, 0),
                 num_ports : graph.connections.length,
                 num_renderops : graph.nodes.length * 2 - 1,
-                fail_sense: this._fail_sense
-            }
+                fail_sense : this._fail_sense
+            };
 
-                             this._publish_dspstats();
+            this._publish_dspstats();
 
             self._remote_graph.request('set', graph)
             .then(() => { log.info('Done Syncing')
