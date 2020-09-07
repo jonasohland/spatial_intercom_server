@@ -316,7 +316,8 @@ export class DSPController extends NodeModule {
                     graph.connections.map(con => con.channelCount())
                         .reduce((prev, current) => prev + current, 0),
                 num_ports : graph.connections.length,
-                num_renderops : graph.nodes.length * 2 - 1
+                num_renderops : graph.nodes.length * 2 - 1,
+                fail_sense: this._fail_sense
             }
 
                              this._publish_dspstats();

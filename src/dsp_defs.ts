@@ -1,10 +1,15 @@
 import { Port } from "./dsp_graph";
+import { NumberFormatDefinition } from "ajv";
 
 export interface DSPNodeStats {
     num_dspobjects: number,
     num_connections: number,
     num_ports: number,
     num_renderops: number,
+    fail_sense: {
+        input: number,
+        output: number
+    }
 }
 
 export enum PortTypes {
