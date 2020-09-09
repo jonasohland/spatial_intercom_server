@@ -11,6 +11,7 @@ import { NodeRooms } from './rooms';
 import { v1 as uuid } from 'uuid';
 import { NodeDSPGraphBuilder, GraphBuilderInputEvents } from './dsp_graph_builder';
 import * as Logger from './log';
+import WebInterface from './web_interface';
 
 const log = Logger.get('DSPNOD');
 
@@ -47,14 +48,14 @@ export class DSPNode extends Node {
     dsp_process: DSPController;
     audio_devices: NodeAudioDevices;
 
-    constructor(id: NodeIdentification)
+    constructor(id: NodeIdentification, webif: WebInterface)
     {
         super(id);
         this.inputs = new NodeAudioInputManager();
         this.users = new NodeUsersManager(this.inputs);
         this.rooms = new NodeRooms();
         this.vst = new VSTScanner();
-        this.dsp_process = new DSPController(this.vst);
+        this.dsp_process = new DSPController(this.vst, webif);
         this.audio_devices = new NodeAudioDevices();
         this.dsp_graph_builder = new NodeDSPGraphBuilder();
         this.add(this.inputs);

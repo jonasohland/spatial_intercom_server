@@ -23,7 +23,7 @@ export class SpatialIntercomServer extends Server {
     createNode(id: NodeIdentification): Node {
         switch (id.type) {
             case NODE_TYPE.DSP_NODE:
-                return new DSPNode(id);
+                return new DSPNode(id, this.webif);
             case NODE_TYPE.RRCS_NODE:
                 return new RRCSNode(id);
         }

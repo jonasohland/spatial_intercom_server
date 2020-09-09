@@ -11,15 +11,12 @@ import {
     Connection,
     Graph,
     Module,
-    NativeNode,
-    Port,
+    NativeNode
 } from './dsp_graph'
-import {GraphBuilderOutputEvents} from './dsp_graph_builder';
 import * as Logger from './log';
-import {Room} from './rooms';
 import {RoomData} from './rooms_defs';
 import {SpatializedInput, User} from './users';
-import {UserData, XTCSettings} from './users_defs';
+import {XTCSettings, PlayState} from './users_defs';
 import {ignore} from './util';
 
 const log = Logger.get('DSPMOD');
@@ -41,7 +38,6 @@ function normalizeIEMStWidthDegs(value: number)
 {
     return (value + 360) / (360 * 2);
 }
-
 
 export class GainNode extends NativeNode {
 
@@ -122,6 +118,7 @@ export class BasicSpatializer extends NativeNode {
 }
 
 export class BasicBinauralDecoder extends NativeNode {
+
     onRemotePrepared(): void
     {
     }
@@ -282,10 +279,11 @@ export abstract class SpatializationModule extends Module {
     abstract outputBuses(graph: Graph): Bus[];
     abstract monoRefBuses(): Bus[];
     abstract stereoRefBuses(): Bus[];
+    abstract setTestSoundPlayState(playstates: PlayState[]): void;
+    abstract resetTestSoundPlayState(): void;
 }
 
 export class MultiSpatializer extends NativeNode {
-
 
     _chtype: PortTypes;
     _chcount: number;
@@ -328,6 +326,17 @@ export class MultiSpatializer extends NativeNode {
                 err => log.error(`Could not apply gain: ${err}`));
     }
 
+    setPlayStates(playstates: PlayState[])
+    {
+        if (this.remote) {
+            this.remote.set('player', {
+                playid: "",
+                command: "set-playstates",
+                data: playstates
+            });
+        }
+    }
+
     pan(params: SourceParameterSet)
     {
         this._params = params;
@@ -342,6 +351,11 @@ export class MultiSpatializer extends NativeNode {
     onRemotePrepared(): void
     {
         log.info('MultiSpatializer remote prepared');
+
+        this.remote.on('notification', msg => {
+            this.emit('notification', msg)
+        });
+
         this._apply_all_parameters().catch(err => {
             log.error('Could not apply all parameters for Spatializer '
                       + this.id + ' ' + err);
@@ -753,6 +767,15 @@ export class RoomSpatializerModule extends SpatializationModule {
         this._encoders.forEach(encoder => encoder.setRoomLowshelf(room));
     }
 
+    setTestSoundPlayState(playstates: PlayState[]) 
+    {
+
+    }
+
+    resetTestSoundPlayState() 
+    {
+    }
+
     input(graph: Graph): Bus
     {
         ignore(graph);
@@ -917,6 +940,16 @@ export class MultiSpatializerModule extends SpatializationModule {
         return [ this._spatializer_node.stereoRefBus() ];
     }
 
+    setTestSoundPlayState(playstates: PlayState[])
+    {
+        if (this._spatializer_node)
+            this._spatializer_node.setPlayStates(playstates);
+    }
+
+    resetTestSoundPlayState()
+    {
+
+    }
 
     graphChanged(graph: Graph): void
     {
@@ -940,6 +973,10 @@ export class MultiSpatializerModule extends SpatializationModule {
             node = new MultiSpatializer(
                 `MultiSpatializer [${this._input.findSourceType()}]`,
                 this._input.findSourceType());
+
+            node.on("notification", (msg: any) => {
+                this.sendNotification(msg.data.title, msg.data.message);
+            })
 
             this._spatializer_node = node;
             node.setGain(this._cached_gain);

@@ -19,6 +19,7 @@ import {IPCServer} from './ipc';
 import * as Logger from './log';
 import {ignore, promisifyEventWithTimeout} from './util';
 import {VSTScanner} from './vst';
+import WebInterface from './web_interface';
 
 const log = Logger.get('DSPROC');
 
@@ -274,11 +275,11 @@ export class DSPController extends NodeModule {
     _dspstats: DSPNodeStats;
     _fail_sense: { input: number, output: number };
 
-    constructor(vst: VSTScanner)
+    constructor(vst: VSTScanner, webif: WebInterface)
     {
         super(DSPModuleNames.DSP_PROCESS);
         this._vst   = vst;
-        this._graph = new Graph(vst);
+        this._graph = new Graph(vst, webif);
 
         this._graph.setInputNode(128);
         this._graph.setOutputNode(128);
@@ -368,7 +369,7 @@ export class DSPController extends NodeModule {
     {
         // await this._remote_graph.request('reset')
         this._graph.clear();
-        this._graph.setInputNode(128);
-        this._graph.setOutputNode(128);
+        this._graph.setInputNode(224);
+        this._graph.setOutputNode(224);
     }
 }

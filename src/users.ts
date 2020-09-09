@@ -1,4 +1,6 @@
-import {Connection, NODE_TYPE} from './communication';
+import {ValidateFunction} from 'ajv';
+
+import {Connection, NODE_TYPE, Requester} from './communication';
 import {
     ManagedNodeStateListRegister,
     ManagedNodeStateObject,
@@ -12,6 +14,7 @@ import * as Inputs from './inputs';
 import * as Logger from './log';
 import {
     basicSpatializedInput,
+    PlayStatesMessage,
     SpatializedInputData,
     UserAddInputsMessage,
     UserAssignHeadtrackerMessage,
@@ -24,7 +27,6 @@ import {
     XTCSettings
 } from './users_defs';
 import {ensurePortTypeEnum} from './util';
-import { ValidateFunction } from 'ajv';
 import * as Validation from './validation';
 
 const log = Logger.get('USERSM');
@@ -81,7 +83,7 @@ export class SpatializedInput extends
         return this.data;
     }
 
-    findSource() 
+    findSource()
     {
         return this.inputsModule.findInputForId(this.data.inputid);
     }
@@ -172,6 +174,7 @@ export class NodeUsersManager extends NodeModule {
     _users: UserList;
     _inputs: SpatializedInputsList;
     _inputs_module: Inputs.NodeAudioInputManager;
+    _audiofiles: Requester;
 
     constructor(inputsModule: Inputs.NodeAudioInputManager)
     {
@@ -297,6 +300,17 @@ export class NodeUsersManager extends NodeModule {
             catch (err) {
                 this._server._webif.error(err);
             }
+        } else if (topic == 'testfiles') {
+            let all_files: any;
+            this._audiofiles.request('list-files').then(msg => {
+                all_files = msg.data;
+                return this._audiofiles.request('default-file');
+            }).then(msg => {
+                socket.emit(`${this.myNodeId()}.testfiles`, { default: msg.data, all: all_files });
+            }).catch(err => {
+                log.error(`Could not retrieve testfile data: ${err}`);
+                this._server._webif.broadcastError("Testfiles", err);
+            })
         }
     }
 
@@ -306,6 +320,17 @@ export class NodeUsersManager extends NodeModule {
 
     init()
     {
+    }
+
+    setDefaultTestFile(file: string)
+    {
+        console.log(file);
+        this._audiofiles.set('default-file', file).then(msg => {
+            this._server._webif.broadcastNodeNotification(this.myNode(), `Set default test file to ${file}`);
+        }).catch(err => {
+            log.error(`Failed to set default test file: ${err}`);
+            this._server._webif.broadcastError("Set Testfile", err);
+        });
     }
 
     updateWebInterfaces()
@@ -356,6 +381,7 @@ export class NodeUsersManager extends NodeModule {
 
     start(remote: Connection)
     {
+        this._audiofiles = remote.getRequester("audiofiles");
         this.save().catch(err => {
             log.error('Could write data to node ' + err);
         });
@@ -393,7 +419,8 @@ export class UsersManager extends ServerModule {
     constructor()
     {
         super('users');
-        this.validate_userdata = Validation.getValidator(Validation.Validators.UserData);
+        this.validate_userdata
+            = Validation.getValidator(Validation.Validators.UserData);
     }
 
     joined(socket: SocketIO.Socket, topic: string)
@@ -450,23 +477,25 @@ export class UsersManager extends ServerModule {
 
     init()
     {
-        this.handleWebInterfaceEvent(
-            'add.user',
-            (socket: SocketIO.Socket, node: DSPNode, data: UserData) => {
-
-                if (!this.validate_userdata(data)) {
-                    this.webif.broadcastError(node.name(), `Could not add new user '${data.name}': Missing data.`);
-                    log.error("Missing: "); 
-                    if (this.validate_userdata.errors)
-                        this.validate_userdata.errors.forEach(err => {
-                            log.error("    " + err.dataPath + "  " + err.message);
-                        })
+        this.handleWebInterfaceEvent('add.user', (socket: SocketIO.Socket,
+                                                  node: DSPNode,
+                                                  data: UserData) => {
+            if (!this.validate_userdata(data)) {
+                this.webif.broadcastError(
+                    node.name(),
+                    `Could not add new user '${data.name}': Missing data.`);
+                log.error('Missing: ');
+                if (this.validate_userdata.errors)
+                    this.validate_userdata.errors.forEach(err => {
+                        log.error('    ' + err.dataPath + '  ' + err.message);
+                    })
                     return;
-                }
+            }
 
-                node.users.addUser(data);
-                this.webif.broadcastNodeNotification(node, `Added new user '${data.name}'`);
-            });
+            node.users.addUser(data);
+            this.webif.broadcastNodeNotification(
+                node, `Added new user '${data.name}'`);
+        });
 
         this.handleWebInterfaceEvent(
             'user.add.inputs', (socket: SocketIO.Socket, node: DSPNode,
@@ -592,5 +621,24 @@ export class UsersManager extends ServerModule {
                 else
                     log.error('Could not find node for user ' + data.user);
             });
+
+        this.handleWebInterfaceEvent(
+            'user.input.playstates', (socket: SocketIO.Socket, node: DSPNode,
+                                      data: PlayStatesMessage) => {
+                node.emitToModule(DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.PLAYSTATES,
+                                  data.userid, data.inputid, data.states);
+            });
+
+        this.handleWebInterfaceEvent(
+            'user.input.reset-playstates',
+            (socket: SocketIO.Socket, node: DSPNode) => {
+                node.emitToModule(DSPModuleNames.GRAPH_BUILDER,
+                                  GraphBuilderInputEvents.RESET_PLAYSTATES);
+            });
+
+        this.handleWebInterfaceEvent('default-test-file', (socket: SocketIO.Socket, node: DSPNode, file: string) => {
+            node.users.setDefaultTestFile(file);
+        });
     }
 }

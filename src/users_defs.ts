@@ -16,7 +16,6 @@ export interface SpatializedInputData {
     width?: number,
 }
 
-
 export interface XTCSettings {
     accuracy: number;
     enabled_st: boolean;
@@ -24,6 +23,13 @@ export interface XTCSettings {
     dist_spk: number;
     dist_ears: number;
     dist_listener: number;
+}
+
+export interface PlayState {
+    noise: boolean;
+    tone: boolean;
+    state: boolean;
+    playid: string;
 }
 
 export interface UserData {
@@ -78,6 +84,12 @@ export interface UserModifyXTCMessage {
 export interface ManagedPort {
     port: Port;
     input: SpatializedInputData
+}
+
+export interface PlayStatesMessage {
+    states: PlayState[],
+    userid: string,
+    inputid: string
 }
 
 export interface ArtistSyncSettings {

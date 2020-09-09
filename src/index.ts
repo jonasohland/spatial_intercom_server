@@ -3,3 +3,4 @@ export { NodeAudioInputDescription, basicNodeAudioInputDescription } from './inp
 export { UserData, basicUserData } from './users_defs';
 export { nodeRoomName, serverRoomName, webifResponseEvent } from './web_interface_defs'
 export { xpvtid, xpEqual, xpVtEqual, __xpid, isWildcardPort, isWildcardXP, destinationPortIsWildcard, sourcePortIsWildcard, makeWildcardPort, getLoopbackXPForWildcard, CrosspointSyncType  } from './rrcs_defs'; 
+export { ensurePortTypeEnum } from './util';

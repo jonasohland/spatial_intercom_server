@@ -5,6 +5,8 @@ import * as COM from './communication';
 import {PortTypes, SourceUtils, stringToPortType} from './dsp_defs'
 import * as Logger from './log';
 import {VSTScanner} from './vst';
+import WebInterface from './web_interface';
+import e from 'express';
 
 const log = Logger.get('DSPGPH');
 
@@ -490,6 +492,27 @@ export abstract class NativeNode extends Node {
 export abstract class Module {
     id: number;
     graph: Graph;
+
+    sendNotification(title: string, message: string)
+    {
+        log.verbose(`DSP Module notification: [${title}] ${message}`);
+        let webif = this.graph.webif();
+        if (webif) 
+            webif.broadcastNotification(title, message);
+        else
+            log.warn("Could not deliver notification to Web Interface");
+    }
+
+    sendError(title: string, message: string) 
+    {
+        log.error(`DSP Module error: [${title}] ${message}`);
+        let webif = this.graph.webif();
+        if (webif) 
+            webif.broadcastError(title, message);
+        else
+            log.warn("Could not deliver notification to Web Interface");
+    }
+
     abstract input(graph: Graph): Bus;
     abstract output(graph: Graph): Bus;
     abstract graphChanged(graph: Graph): void;
@@ -509,9 +532,12 @@ export class Graph {
     remote: COM.Requester;
     vst: VSTScanner;
 
-    constructor(vst: VSTScanner)
+    _webif: WebInterface;
+
+    constructor(vst: VSTScanner, webif: WebInterface)
     {
         this.vst = vst;
+        this._webif = webif;
     }
 
     attachConnection(connection: COM.Connection)
@@ -613,6 +639,7 @@ export class Graph {
     addModule(mod: Module)
     {
         ++this.node_count;
+        mod.graph = this;
         mod.build(this);
         mod.id    = this.node_count;
         mod.graph = this;
@@ -645,6 +672,11 @@ export class Graph {
         this.modules.forEach(mod => mod.graphChanged(this));
     }
 
+    webif()
+    {
+        return this._webif;
+    }
+
     _export_graph()
     {
         let out = {
@@ -669,7 +701,8 @@ export class Graph {
         return out;
     }
 
-    graphvizlabel(thing: any) {
+    graphvizlabel(thing: any)
+    {
         return `${thing}`;
     }
 
