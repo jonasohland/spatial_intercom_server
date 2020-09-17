@@ -1,3 +1,4 @@
+import {Options} from 'dnssd';
 import {EventEmitter2} from 'eventemitter2';
 import * as fs from 'fs';
 import {performance as perf} from 'perf_hooks';
@@ -173,6 +174,8 @@ export abstract class RRCSServer extends EventEmitter2 {
 
     _nodes: ArtistNode[] = [];
 
+    _options: any;
+
     abstract onArtistConfigurationChanged(): void;
     abstract onXpValueChanged(crosspoint: Crosspoint, single?: number,
                               conf?: number): void;
@@ -184,6 +187,8 @@ export abstract class RRCSServer extends EventEmitter2 {
     {
         super();
         log.info('Server start listen');
+
+        this._options = options;
 
         if (options.rrcs_server == null) {
             log.error('\'server-interface\' option has to be specified');
@@ -247,6 +252,22 @@ export abstract class RRCSServer extends EventEmitter2 {
             }
             this.onXpsChanged(out);
             cb(null, [ params[0] ]);
+        });
+
+        this._srv.on('NotFound', (method, params, cb) => {
+            if (params.length) {
+                let reqid = params[0];
+                if (this._is_trs_key(reqid, true)) {
+                    log.warn(`Received unknown event ${
+                        method} from RRCS. Transaction key was: ${reqid}`);
+                    cb(null, reqid);
+                }
+                else {
+                    log.warn(`Received unknown event ${
+                        method} from RRCS. The request did not contain a valid transaction key`);
+                    cb('NotFound', []);
+                }
+            }
         });
     }
 
@@ -548,14 +569,22 @@ export abstract class RRCSServer extends EventEmitter2 {
 
         for (let p of ports) {
             try {
-                p.Subtitle = (<any>await (this.getObjectProperty(
-                                  p.ObjectID, 'Subtitle')))
-                                 .Subtitle
-                p.Alias = (<any>await this.getPortAlias(p))[2];
+                if (!this._options.ignore_subtitles) {
+                    p.Subtitle = (<any>await (this.getObjectProperty(
+                                      p.ObjectID, 'Subtitle')))
+                                     .Subtitle
+                }
             }
             catch (err) {
                 log.error(
                     `Could not retrieve subtitle for port ${p.Name}: ${err}`);
+            }
+            try {
+                p.Alias = (<any>await this.getPortAlias(p))[2];
+            }
+            catch (err) {
+                log.error(
+                    `Could not retrieve alias for port ${p.Name}: ${err}`);
             }
         }
 
@@ -596,6 +625,23 @@ export abstract class RRCSServer extends EventEmitter2 {
                 });
             });
         }
+    }
+
+    private _is_trs_key(key: any, from_rrcs: boolean)
+    {
+        if (!(typeof key === 'string'))
+            return false;
+
+        if (!(key.length === 11))
+            return false;
+
+        if (from_rrcs && key.substr(0, 1) !== 'R')
+            return false;
+
+        if (isNaN(<any>key.substr(1)))
+            return false;
+
+        return true;
     }
 
     private _get_trs_key()
@@ -833,15 +879,20 @@ export class RRCSService extends RRCSServer {
         for (let xpstate of xps) {
 
             if (xpstate.state) {
-                let conf_vol_master = this._find_volume_master(xpstate.xp, false);
-                let sing_vol_master = this._find_volume_master(xpstate.xp, true);
+                let conf_vol_master
+                    = this._find_volume_master(xpstate.xp, false);
+                let sing_vol_master
+                    = this._find_volume_master(xpstate.xp, true);
 
                 try {
                     if (conf_vol_master)
-                        await this.setXPVolume(xpstate.xp, conf_vol_master.vol, false, true);
+                        await this.setXPVolume(
+                            xpstate.xp, conf_vol_master.vol, false, true);
                     if (sing_vol_master)
-                        await this.setXPVolume(xpstate.xp, sing_vol_master.vol, true, false);
-                } catch (err) {
+                        await this.setXPVolume(
+                            xpstate.xp, sing_vol_master.vol, true, false);
+                }
+                catch (err) {
                     log.error(`Could not set slave XP volume: ${err}`);
                 }
             }
@@ -1052,7 +1103,8 @@ export class RRCSService extends RRCSServer {
         });
     }
 
-    private _find_volume_master(xp: Crosspoint, single: boolean) {
+    private _find_volume_master(xp: Crosspoint, single: boolean)
+    {
         for (let sync_key of Object.keys(this._synced)) {
             let sync = this._synced[sync_key];
             for (let slave of sync.slaves) {
@@ -1113,7 +1165,8 @@ export class RRCSService extends RRCSServer {
         if (still_set_by.length) {
             log.verbose(`Wont kill XP because it is still set by ${
                 still_set_by.length} masters`);
-            still_set_by.forEach(mid => log.verbose(`    still set by: ${mid}`));
+            still_set_by.forEach(
+                mid => log.verbose(`    still set by: ${mid}`));
         }
         else {
             try {
@@ -1157,7 +1210,7 @@ export class RRCSService extends RRCSServer {
                   }
 
                   this.local_sock.send(toBuffer(msg),
-   this.config.rrcs_osc_port, this.config.rrcs_osc_host);
+    this.config.rrcs_osc_port, this.config.rrcs_osc_host);
               });
     }
 

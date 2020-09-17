@@ -1,6 +1,16 @@
 import * as Logger from './log'
 import {ArtistPortInfo} from './rrcs'
-import {Crosspoint, CrosspointSync, CrosspointSyncType, xpvtid, CrosspointVolumeTarget} from './rrcs_defs'
+import {
+    Crosspoint,
+    CrosspointSync,
+    CrosspointSyncType,
+    CrosspointVolumeTarget,
+    makeConferenceVolumeTarget,
+    makeSingleVolumeTarget,
+    makeXPSync,
+    makeXPVolumeSource,
+    xpvtid
+} from './rrcs_defs'
 
 const log = Logger.get('RRCSLX');
 
@@ -39,66 +49,98 @@ export function parsePorts(ports: ArtistPortInfo[])
         let destid = findPortForID(ids, tgt.volsrc_dest, false);
 
         if (srcid == null || destid == null) {
-            log.error(`Failed to build VolumeTarget (${tgt.volsrc_src}/${tgt.volsrc_dest})`);
+            log.error(`Failed to build VolumeTarget (${tgt.volsrc_src}/${
+                tgt.volsrc_dest})`);
             continue;
         }
 
         let masterxp: Crosspoint = {
-            Source: { Node: srcid.port.Node, Port: srcid.port.Port, IsInput: true },
-            Destination: { Node: destid.port.Node, Port: destid.port.Port, IsInput: false }
-        }
-
-        let xpsync: CrosspointSync = {
-            state: false,
-            vol: 0,
-            type: CrosspointSyncType.SINGLE,
-            exclude: [],
-            slaves: [],
-            master: {
-                xp: masterxp,
-                conf: tgt.conf
+            Source : {
+                Node : srcid.port.Node,
+                Port : srcid.port.Port,
+                IsInput : true
+            },
+            Destination : {
+                Node : destid.port.Node,
+                Port : destid.port.Port,
+                IsInput : false
             }
         }
 
-        let slavesrc = findPortForID(ids, tgt.fromxp_src, true);
+        let slavesrc
+            = findPortForID(ids, tgt.fromxp_src, true);
 
         if (slavesrc == null) {
             log.error(`Could not find source port for volume target XP`);
+            return;
         }
 
-        let slave: CrosspointVolumeTarget = {
-            xp: {
-                Source: {
-                    Node: slavesrc.port.Node,
-                    Port: slavesrc.port.Port,
-                    IsInput: true
-                },
-                Destination: {
-                    Node: tgt.port.Node,
-                    Port: tgt.port.Port,
-                    IsInput: false
-                }
+        let slavexp: Crosspoint = {
+            Source : {
+                Node : slavesrc.port.Node,
+                Port : slavesrc.port.Port,
+                IsInput : true
             },
-            set: false,
-            single: !tgt.use_conf,
-            conf: tgt.use_conf
+            Destination :
+                { Node : tgt.port.Node, Port : tgt.port.Port, IsInput : false }
         }
 
-        let newmasterid = xpvtid(xpsync.master);
-        let oldmasteridx = masters.findIndex(ms => xpvtid(ms.master) === newmasterid);
-        if (oldmasteridx != -1) {
-            mergeslaves(masters[oldmasteridx], [ slave ]);
-        } else {
-            xpsync.slaves.push(slave);
-            masters.push(xpsync);
+        let confmaster
+            = makeXPSync(makeXPVolumeSource(masterxp, true));
+        let singlemaster = makeXPSync(makeXPVolumeSource(masterxp, false));
+
+        if (tgt.use_conf && tgt.use_single) {
+            if (tgt.single && tgt.conf) {
+                confmaster.slaves.push(makeConferenceVolumeTarget(slavexp));
+                singlemaster.slaves.push(makeSingleVolumeTarget(slavexp));
+            }
+            else {
+                if (tgt.single) {
+                    confmaster.slaves.push(makeSingleVolumeTarget(slavexp));
+                    singlemaster.slaves.push(makeSingleVolumeTarget(slavexp));
+                }
+                else if (tgt.conf) {
+                    confmaster.slaves.push(makeConferenceVolumeTarget(slavexp));
+                    singlemaster.slaves.push(
+                        makeConferenceVolumeTarget(slavexp));
+                }
+            }
+            masters.push(confmaster, singlemaster);
+        }
+        else if (tgt.use_conf) {
+            if (tgt.single && tgt.conf) {
+                confmaster.slaves.push(makeConferenceVolumeTarget(slavexp));
+                confmaster.slaves.push(makeSingleVolumeTarget(slavexp));
+            }
+            else {
+                if (tgt.single)
+                    confmaster.slaves.push(makeSingleVolumeTarget(slavexp));
+                else if (tgt.conf)
+                    confmaster.slaves.push(makeConferenceVolumeTarget(slavexp));
+            }
+            masters.push(confmaster);
+        }
+        else if (tgt.use_single) {
+            if (tgt.single && tgt.conf) {
+                singlemaster.slaves.push(makeConferenceVolumeTarget(slavexp));
+                singlemaster.slaves.push(makeSingleVolumeTarget(slavexp));
+            }
+            else {
+                if (tgt.single)
+                    singlemaster.slaves.push(makeSingleVolumeTarget(slavexp));
+                else if (tgt.conf)
+                    singlemaster.slaves.push(
+                        makeConferenceVolumeTarget(slavexp));
+            }
+            masters.push(singlemaster);
         }
     }
 
     return masters;
 }
 
-function mergeslaves(xps: CrosspointSync, slvs: CrosspointVolumeTarget[]) {
-
+function mergeslaves(xps: CrosspointSync, slvs: CrosspointVolumeTarget[])
+{
 }
 
 function findPortForID(ids: RRCSPortID[], id: string, input: boolean)
@@ -123,8 +165,10 @@ enum RRCSExpressions {
 }
 
 interface RRCSExpression {
-    port: ArtistPortInfo, type: RRCSExpressions, str: string,
-        source: RRCSExpressionSource
+    port: ArtistPortInfo;
+    type: RRCSExpressions;
+    str: string;
+    source: RRCSExpressionSource;
 }
 
 interface RRCSPortID extends RRCSExpression {
@@ -132,8 +176,13 @@ interface RRCSPortID extends RRCSExpression {
 }
 
 interface RRCSVolumeTargetExpression extends RRCSExpression {
-    fromxp_src: string, volsrc_src: string, volsrc_dest: string, conf: boolean,
-        single: boolean, use_conf: boolean
+    fromxp_src: string;
+    volsrc_src: string;
+    volsrc_dest: string;
+    conf: boolean;
+    single: boolean;
+    use_conf: boolean;
+    use_single: boolean;
 }
 
 interface RRCSSetCrosspointExpression extends RRCSExpression {
@@ -154,10 +203,9 @@ function _exprs_add_voltgt(
     let fromxp     = fromxp_tgt[0];
     let vsource;
 
-    if (char === '&')
-        exprobj.use_conf = true;
-    else
-        exprobj.use_conf = false;
+    exprobj.use_conf   = char === '&' || char === '~';
+    exprobj.use_single = char === '+' || char === '~';
+
 
     if (fromxp == null) {
         log.error(
@@ -177,19 +225,36 @@ function _exprs_add_voltgt(
             exprobj.conf   = true;
             exprobj.single = false;
         }
+        else if (fromxp_tgt[1].indexOf('~') != -1) {
+            vsource        = fromxp_tgt[1].split('~');
+            exprobj.single = true;
+            exprobj.conf   = true;
+        }
     }
 
-    if (vsource == null || vsource.length != 2) {
+    if (vsource == null || vsource.length < 1) {
         log.error(
             `Error lexing rrcs expressions in config: Could not extract XPVolume source from string ${
                 expr}`);
         return;
     }
 
-    exprobj.fromxp_src  = fromxp;
-    exprobj.volsrc_src  = vsource[0];
-    exprobj.volsrc_dest = vsource[1];
-    exprobj.type        = RRCSExpressions.SYNC_VOLUME_TARGET;
+    exprobj.fromxp_src = fromxp;
+
+    if (vsource[0] == '') {
+        exprobj.volsrc_src  = fromxp;
+        exprobj.volsrc_dest = vsource[1];
+    }
+    else if (vsource[0].length > 0) {
+        exprobj.volsrc_src  = vsource[0];
+        exprobj.volsrc_dest = vsource[1];
+    }
+    else {
+        log.error(`Could not extract volume sync target from string ${expr}`);
+        return;
+    }
+
+    exprobj.type = RRCSExpressions.SYNC_VOLUME_TARGET;
 
     log.debug(`Found [${
         RRCSExpressions[RRCSExpressions.SYNC_VOLUME_TARGET]}] expression in [${
@@ -201,17 +266,22 @@ function _exprs_add_voltgt(
     exprs.push(exprobj);
 }
 
-function _exprs_add_id(
-    exprs: RRCSExpression[], origin: RRCSExpression, expr: string)
+function _exprs_add_id(exprs: RRCSExpression[], origin: RRCSExpression,
+                       expr: string, sec_ch: boolean)
 {
     let exprobj  = <RRCSPortID>origin;
     exprobj.id   = expr;
     exprobj.type = RRCSExpressions.PORT_ID;
 
+    if (exprobj.port.HasSecondChannel && sec_ch)
+        exprobj.port.Port++;
+
     log.debug(`Found [${
         RRCSExpressions[RRCSExpressions.PORT_ID]}]            expression in [${
         RRCSExpressionSource[origin.source]}] of port [${origin.port.Name}]: ${
-        exprobj.id}`);
+        exprobj.id} ${
+        (sec_ch && exprobj.port.HasSecondChannel) ? '(applies to 2nd channel)'
+                                                  : ''}`);
 
     exprs.push(exprobj);
 }
@@ -222,23 +292,27 @@ function parseRRCSExpressions(exprlist: RRCSExpression[],
 {
     let exprs = str.split(' ');
 
-    let origin: RRCSExpression
-        = { port, str, source, type : RRCSExpressions.ANY }
 
-          exprs.forEach(ex => {
-              switch (ex.charAt(0)) {
-                  case '!':
-                      _exprs_add_setxp(exprlist, origin, ex.substr(1));
-                      break;
-                  case '+':
-                      _exprs_add_voltgt(exprlist, origin, '+', ex.substr(1));
-                      break;
-                  case '&':
-                      _exprs_add_voltgt(exprlist, origin, '&', ex.substr(1));
-                      break;
-                  case '$':
-                      _exprs_add_id(exprlist, origin, ex.substr(1));
-                      break;
-              }
-          });
+    exprs.forEach(ex => {
+        let origin: RRCSExpression
+        = { port, str, source, type : RRCSExpressions.ANY };
+        switch (ex.charAt(0)) {
+            case '!': _exprs_add_setxp(exprlist, origin, ex.substr(1)); break;
+            case '+':
+                _exprs_add_voltgt(exprlist, origin, '+', ex.substr(1));
+                break;
+            case '&':
+                _exprs_add_voltgt(exprlist, origin, '&', ex.substr(1));
+                break;
+            case '~':
+                _exprs_add_voltgt(exprlist, origin, '~', ex.substr(1));
+                break;
+            case '$':
+                _exprs_add_id(exprlist, origin, ex.substr(1), false);
+                break;
+            case '%':
+                _exprs_add_id(exprlist, origin, ex.substr(1), true);
+                break;
+        }
+    });
 }

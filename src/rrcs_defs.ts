@@ -51,6 +51,41 @@ export interface CrosspointSync {
     exclude: Crosspoint[];
 }
 
+export function makeSingleVolumeTarget(xp: Crosspoint): CrosspointVolumeTarget
+{
+    return { xp, single : true, conf : false, set : false };
+}
+
+export function makeConferenceVolumeTarget(xp: Crosspoint):
+    CrosspointVolumeTarget
+{
+    return { xp, single : false, conf : true, set : false };
+}
+
+export function makeXPSetterTarget(xp: Crosspoint, single: boolean = true,
+                                   conf: boolean = true): CrosspointVolumeTarget
+{
+    return { xp, single, conf, set : true };
+}
+
+export function makeXPVolumeSource(
+    xp: Crosspoint, conf: boolean): CrosspointVolumeSource
+{
+    return { xp, conf };
+}
+
+export function makeXPSync(master: CrosspointVolumeSource): CrosspointSync
+{
+    return {
+        state : false,
+        vol : 0,
+        type : CrosspointSyncType.SINGLE,
+        master,
+        slaves : [],
+        exclude : []
+    };
+}
+
 export function isLoopbackXP(xp: Crosspoint)
 {
     return xp.Source.Port === xp.Destination.Port
